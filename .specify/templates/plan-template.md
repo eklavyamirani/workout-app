@@ -3,7 +3,7 @@
 **Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
 **Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
 
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
+**Note**: This template is filled in by the `/speckit.plan` command.
 
 ## Summary
 
@@ -31,7 +31,30 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+**Code Quality Gates**:
+- [ ] TypeScript strict mode enabled for frontend (no `any` types except third-party interfaces)
+- [ ] .NET nullable reference types enabled for backend
+- [ ] Linting and formatting tools configured (ESLint + Prettier for frontend, .NET analyzers for backend)
+- [ ] Documentation plan for complex logic and public APIs established
+
+**Testing Gates**:
+- [ ] TDD approach planned (unit tests first, then implementation)  
+- [ ] Frontend testing strategy defined (Jest + React Testing Library for components)
+- [ ] Backend testing strategy defined (xUnit + >80% code coverage requirement)
+- [ ] Integration testing plan for API contracts
+- [ ] E2E testing plan for critical user workflows
+
+**Performance Gates**:
+- [ ] Frontend bundle size target <2MB gzipped planned
+- [ ] API response time target <200ms p95 for CRUD operations
+- [ ] Database indexing strategy for performance planned
+- [ ] Lighthouse performance score >90 target set
+
+**UX Consistency Gates**:
+- [ ] Design system components selected (Material-UI/Chakra UI)
+- [ ] Mobile-first responsive design planned
+- [ ] Accessibility standards (WCAG 2.1 AA) integration planned
+- [ ] Loading states, error messages, and feedback consistency planned
 
 ## Project Structure
 

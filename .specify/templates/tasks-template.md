@@ -48,9 +48,11 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T001 Create project structure per implementation plan (backend/ and frontend/ directories for web app)
+- [ ] T002 [P] Initialize React TypeScript frontend with Vite, ESLint, Prettier
+- [ ] T003 [P] Initialize .NET Web API backend with nullable reference types enabled
+- [ ] T004 [P] Configure linting and formatting tools per constitution standards
+- [ ] T005 [P] Setup testing frameworks (Jest/RTL for frontend, xUnit for backend)
 
 ---
 
@@ -60,14 +62,18 @@ description: "Task list template for feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-Examples of foundational tasks (adjust based on your project):
+Constitution-aligned foundational tasks:
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T006 Setup PostgreSQL database with Entity Framework Core migrations
+- [ ] T007 [P] Implement authentication/authorization framework (.NET Identity)
+- [ ] T008 [P] Setup API routing and middleware structure with proper error handling
+- [ ] T009 [P] Configure structured logging with Serilog
+- [ ] T010 [P] Setup React Query for frontend API state management
+- [ ] T011 [P] Configure design system components (Material-UI or Chakra UI)
+- [ ] T012 [P] Setup performance monitoring (Lighthouse CI for frontend)
+- [ ] T013 Create base entity models that all stories depend on
+- [ ] T014 Configure environment configuration management
+- [ ] T015 [P] Setup automated testing pipeline with coverage reporting
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

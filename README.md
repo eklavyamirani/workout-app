@@ -14,7 +14,7 @@ Below is a preview of the application:
 
 ![Workout Tracker Preview](./public/screenshot.jpeg)
 
-## Installation
+## Installation (Dev)
 0. Use the devcontainer (or use the compose to attach to the app container)
 1. Navigate to the project directory:
    ```bash
@@ -25,9 +25,12 @@ Below is a preview of the application:
    npm install
    ```
 
-## Usage
+## Usage (Dev)
 1. Start the development server:
    ```bash
    npm run dev
    ```
 2. Open the application in your browser at the URL provided by the development server.
+
+## Deployment
+See `deploy/README.md` for container build/run instructions and zero-downtime rollout guidance. Configurable via env vars `PORT` and `DEPLOYMENT_MODE`. Deployment assets live under `deploy/`.

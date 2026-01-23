@@ -9,6 +9,7 @@ This directory contains production-ready containerization and zero-downtime depl
 ## Configuration via Environment Variables
 - `PORT` — container listen port (default: `4173`)
 - `DEPLOYMENT_MODE` — deployment environment label (e.g. `production`, `staging`, `dev`). Surfaced in the UI.
+- **Secrets** — inject at runtime via environment variables (e.g., `API_KEY`, `ANALYTICS_TOKEN`). Do not bake secrets into images.
 
 ## Build and Run Locally
 ```bash
@@ -39,4 +40,5 @@ docker run -d -p 4173:4173 -e PORT=4173 -e DEPLOYMENT_MODE=production workout-ap
 ## Notes
 - Static build served by nginx; SPA fallback configured.
 - Healthcheck endpoint exposed at `/health`.
+- Container includes Docker `HEALTHCHECK` probing `/health`.
 - Ports and mode are configurable via env vars; defaults are provided.

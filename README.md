@@ -33,4 +33,4 @@ Below is a preview of the application:
 2. Open the application in your browser at the URL provided by the development server.
 
 ## Deployment
-See `deploy/README.md` for container build/run instructions and zero-downtime rollout guidance. Configurable via env vars `PORT` and `DEPLOYMENT_MODE`. Deployment assets live under `deploy/`.
+See `deploy/README.md` for container build/run instructions and zero-downtime rollout guidance. Configurable via env vars (e.g., `PORT`, `DEPLOYMENT_MODE`, secrets injected at runtime). Deployment assets live under `deploy/`.

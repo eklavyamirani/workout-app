@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   workout-app:
     build:
@@ -13,8 +11,6 @@ services:
     environment:
       - PORT=${PORT-4173}
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE-production}
-      # Inject secrets at runtime via environment variables (set in your orchestrator or env file)
-      # - API_KEY=${API_KEY}
     ports:
       - "${PORT-4173}:${PORT-4173}"
     healthcheck:

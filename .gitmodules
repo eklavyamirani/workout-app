@@ -1,0 +1,3 @@
+[submodule "devcontainer-template"]
+	path = devcontainer-template
+	url = https://github.com/eklavyamirani/react-dotnet-postgres-template.git

@@ -11,7 +11,9 @@ RUN npm run build
 FROM nginx:1.25-alpine
 WORKDIR /usr/share/nginx/html
 RUN adduser -D -H -u 1000 appuser \
-  && chown -R appuser:appuser /usr/share/nginx /var/cache/nginx /var/run /etc/nginx/conf.d \
+  && chown -R appuser:appuser /usr/share/nginx /var/cache/nginx /etc/nginx/conf.d \
+  && touch /var/run/nginx.pid \
+  && chown appuser:appuser /var/run/nginx.pid \
   && apk add --no-cache curl
 COPY --from=build /app/dist .
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf

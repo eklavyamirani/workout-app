@@ -42,3 +42,4 @@ docker run -d -p 4173:4173 -e PORT=4173 -e DEPLOYMENT_MODE=production workout-ap
 - Healthcheck endpoint exposed at `/health`.
 - Container includes Docker `HEALTHCHECK` probing `/health`.
 - Ports and mode are configurable via env vars; defaults are provided.
+- When running behind a reverse proxy/ingress (for TLS or domain routing), map host traffic to container `PORT` (default 4173). Security headers (CSP, XFO, etc.) remain compatible with reverse proxies; extend CSP `connect-src` only if your frontend must call additional origins.

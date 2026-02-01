@@ -1,5 +1,0 @@
-# this can potentially store secrets. Ignore
-.postgres.env
-
-# not needed
-db_data

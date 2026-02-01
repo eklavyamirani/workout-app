@@ -11,10 +11,11 @@ RUN npm run build
 FROM nginx:1.25-alpine
 WORKDIR /usr/share/nginx/html
 RUN adduser -D -H -u 1000 appuser \
-  && chown -R appuser:appuser /usr/share/nginx /var/cache/nginx /var/run /etc/nginx/conf.d
+  && chown -R appuser:appuser /usr/share/nginx /var/cache/nginx /var/run /etc/nginx/conf.d \
+  && apk add --no-cache curl
 COPY --from=build /app/dist .
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 4173
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -q -O- http://127.0.0.1:4173/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -fsSL http://127.0.0.1:4173/ -o /dev/null || exit 1
 USER appuser
 CMD ["nginx", "-g", "daemon off;"]

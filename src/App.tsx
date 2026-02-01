@@ -215,7 +215,12 @@ function Header({ view, onViewChange }) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Dumbbell className="w-6 h-6 text-blue-500" />
-            <h1 className="text-xl font-bold text-gray-900">Workout Tracker</h1>
+            <div className="flex flex-col">
+              <h1 className="text-xl font-bold text-gray-900">Workout Tracker</h1>
+              <span className="text-xs text-gray-500 font-mono">
+                {typeof __DEPLOYMENT_MODE__ !== 'undefined' ? __DEPLOYMENT_MODE__ : 'unknown'}
+              </span>
+            </div>
           </div>
 
           <nav className="flex gap-4">

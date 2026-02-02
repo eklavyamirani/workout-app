@@ -295,18 +295,24 @@ function ProgramSetup({ exercises, onComplete, onViewChange, onSaveExercises }) 
 
   function selectExercise(day, tier, exerciseId) {
     setWorkoutDays(prev => {
-      const updated = { ...prev };
+      // Create new references for immutable update
+      const dayData = { ...prev[day] };
+
       if (tier === 'T3') {
-        const current = updated[day].T3;
+        const current = dayData.T3;
         if (current.includes(exerciseId)) {
-          updated[day].T3 = current.filter(id => id !== exerciseId);
+          dayData.T3 = current.filter(id => id !== exerciseId);
         } else {
-          updated[day].T3 = [...current, exerciseId];
+          dayData.T3 = [...current, exerciseId];
         }
       } else {
-        updated[day][tier] = updated[day][tier] === exerciseId ? null : exerciseId;
+        dayData[tier] = dayData[tier] === exerciseId ? null : exerciseId;
       }
-      return updated;
+
+      return {
+        ...prev,
+        [day]: dayData
+      };
     });
   }
 

@@ -55,10 +55,24 @@ npx playwright test e2e/setup.spec.ts
 npx playwright test --grep "program setup"
 ```
 
-### View Test Results
+### View Test Results & Screenshots
+After running tests, view the HTML report with screenshots:
 ```bash
 npm run test:e2e:report
 ```
+
+### Run with Screenshots for All Tests
+Capture screenshots at each step for visual inspection:
+```bash
+npm run test:e2e:screenshots
+```
+
+Screenshots and videos are automatically captured in:
+- Failed tests: `test-results/` directory
+- All screenshots: `test-results/` directory with full trace
+
+### View Specific Test Traces
+Tests also capture full traces (video, network, DOM snapshots) that can be viewed in the Playwright Inspector. Failed tests automatically include these traces which appear in the HTML report.
 
 ### Test Coverage
 The E2E test suite covers:

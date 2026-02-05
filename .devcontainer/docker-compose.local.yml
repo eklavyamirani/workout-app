@@ -6,5 +6,6 @@ services:
       target: localdev
 
     volumes:
+      - ~/.copilot:/home/vscode/.copilot:cached
       - ~/.claude:/home/vscode/.claude:cached
       - ~/.claude.json:/home/vscode/.claude.json:cached

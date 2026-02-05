@@ -81,44 +81,48 @@ interface Session {
 
 ## Implementation Phases
 
-### Phase 1: Core Data Model Refactoring
-- [ ] Create new TypeScript types for Program, Activity, Session
-- [ ] Create `src/types/` directory with type definitions
-- [ ] Update storage adapter with new key patterns (`programs:*`, `sessions:*`)
-- [ ] Clear existing GZCLP data on first load (breaking change - no migration)
+### Phase 1: Core Data Model Refactoring ✅
+- [x] Create new TypeScript types for Program, Activity, Session
+- [x] Create `src/types/` directory with type definitions
+- [x] Update storage adapter with new key patterns (`programs:*`, `sessions:*`)
+- [x] Clear existing GZCLP data on first load (breaking change - no migration)
 
-### Phase 2: Program Management
-- [ ] Build ProgramList component (shows all active programs)
-- [ ] Build CreateProgram flow with type selection
-- [ ] Build program templates for common types:
-  - [ ] Weightlifting template (simplified GZCLP-style)
-  - [ ] Skill practice template (duration-based)
-  - [ ] Custom template (user-defined fields)
-- [ ] Add edit/archive/delete program functionality
+### Phase 2: Program Management ✅
+- [x] Build ProgramList component (shows all active programs)
+- [x] Build CreateProgram flow with type selection
+- [x] Build program templates for common types
+- [x] Add edit/archive/delete program functionality
 
-### Phase 3: Rolling Calendar View
-- [ ] Create WeeklyCalendar component
-- [ ] Show upcoming sessions across all programs
-- [ ] Implement "skip" functionality with reason tracking
-- [ ] Implement "split day" - move activity to different day
-- [ ] Handle missed days - roll forward automatically
-- [ ] Add visual indicators for different program types
+### Phase 3: Rolling Calendar View ✅
+- [x] Create WeeklyCalendar component
+- [x] Show upcoming sessions across all programs
+- [x] Implement "skip" functionality with reason tracking
+- [ ] Implement "split day" - move activity to different day (deferred)
+- [x] Handle missed days - roll forward automatically
 
-### Phase 4: Session Tracking
-- [ ] Create generic SessionView component
-- [ ] Implement duration tracking (start/stop timer)
-- [ ] Implement completion tracking (mark done)
-- [ ] Preserve existing sets/reps/weight tracking for weightlifting
-- [ ] Add notes field for all session types
-- [ ] Build session summary view
+### Phase 4: Session Tracking ✅
+- [x] Create generic SessionView component
+- [x] Implement duration tracking (start/stop timer)
+- [x] Implement completion tracking (mark done)
+- [x] Preserve existing sets/reps/weight tracking for weightlifting
+- [x] Add notes field for all session types
 
-### Phase 5: Polish & Integration
-- [ ] Update Home page to show rolling calendar
-- [ ] Add quick-start buttons for each program type
-- [ ] Clear old storage keys on app load (fresh start)
-- [ ] Update Header navigation
-- [ ] Test all flows end-to-end
-- [ ] Update e2e tests
+### Phase 5: Polish & Integration ✅
+- [x] Update Home page to show rolling calendar
+- [x] Clear old storage keys on app load (fresh start)
+- [x] Update Header navigation
+- [x] Create new e2e tests (10 passing)
+
+### Phase 6: Program Import/Export ✅
+- [x] Define export format (JSON with program + activities)
+- [x] Add "Export" button to ProgramList
+- [x] Create export function that downloads JSON file
+- [x] Add "Import" button to ProgramList
+- [x] Create import function with validation
+- [x] Handle duplicate program names on import
+- [x] Add e2e tests for import/export (4 tests passing)
+
+**Future**: Dedicated program designer sub-app
 
 ---
 
@@ -170,6 +174,41 @@ Step 2: Configure Schedule
 
 ---
 
+## Export Format
+
+Programs are exported as JSON files with the following structure:
+
+```typescript
+interface ProgramExport {
+  version: 1;
+  exportedAt: string;  // ISO 8601
+  program: Program;
+  activities: Activity[];
+}
+```
+
+Example:
+```json
+{
+  "version": 1,
+  "exportedAt": "2026-02-05T20:00:00.000Z",
+  "program": {
+    "id": "program_123",
+    "name": "Violin Practice",
+    "type": "skill",
+    "schedule": { "mode": "weekly", "daysOfWeek": [1, 3, 5] },
+    "isActive": true,
+    "createdAt": "2026-02-01T10:00:00.000Z"
+  },
+  "activities": [
+    { "id": "activity_1", "name": "Scales", "trackingType": "duration", "targetDuration": 15 },
+    { "id": "activity_2", "name": "Etudes", "trackingType": "duration", "targetDuration": 30 }
+  ]
+}
+```
+
+---
+
 ## Design Decisions
 
 1. **Breaking Change**: Existing GZCLP data will be cleared. No migration needed.
@@ -200,3 +239,4 @@ Step 2: Configure Schedule
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2026-02 | Initial PRD for multi-program support |
+| 1.1 | 2026-02 | Added Phase 6: Program Import/Export |

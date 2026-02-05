@@ -32,5 +32,66 @@ Below is a preview of the application:
    ```
 2. Open the application in your browser at the URL provided by the development server.
 
+## Testing (E2E)
+End-to-end tests are written using Playwright and validate all major user flows.
+
+### Run All Tests
+```bash
+npm run test:e2e
+```
+
+### Run Tests in UI Mode (Interactive)
+```bash
+npm run test:e2e:ui
+```
+
+### Run Specific Test File
+```bash
+npx playwright test e2e/setup.spec.ts
+```
+
+### Run Tests Matching a Pattern
+```bash
+npx playwright test --grep "program setup"
+```
+
+### View Test Results & Screenshots
+
+After running tests, view the interactive HTML report:
+```bash
+npm run test:e2e:report
+```
+
+### Run with Screenshots for All Tests
+Capture screenshots at each test step for visual inspection:
+```bash
+npm run test:e2e:screenshots
+```
+
+### Test Artifacts
+
+Two directories are generated during test runs (both are ignored in git):
+
+**`playwright-report/`** - Interactive HTML Dashboard
+- Single comprehensive report with all test results
+- Includes screenshots, videos, and test timings
+- Best for: reviewing overall test status and sharing results
+- Access via: `npm run test:e2e:report`
+
+**`test-results/`** - Raw Per-Test Artifacts
+- One directory per test with screenshots, videos, and traces
+- Full debugging information (DOM snapshots, network logs)
+- Best for: investigating specific test failures
+- Organized by test name for easy navigation
+- Includes complete trace data viewable in Playwright Inspector
+
+### Test Coverage
+The E2E test suite covers:
+- **Program Setup** (12 tests) - Exercise selection, custom exercises, weight entry
+- **Navigation** (6 tests) - Header navigation, button states
+- **Workout Sessions** (18 tests) - Starting workouts, logging sets, weight/rep adjustments, AMRAP
+- **Exercise Library** (12 tests) - Exercise browser, custom exercise management
+- **Data Persistence** (6 tests) - localStorage, page reloads, workout history
+
 ## Deployment
 See `deploy/README.md` for container build/run instructions and zero-downtime rollout guidance. Configurable via env vars (e.g., `PORT`, `DEPLOYMENT_MODE`, secrets injected at runtime). Deployment assets live under `deploy/`.

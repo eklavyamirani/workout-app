@@ -1,8 +1,8 @@
 // Program Types
-export type ProgramType = 'weightlifting' | 'skill' | 'cardio' | 'custom';
+export type ProgramType = 'weightlifting' | 'gzclp' | 'skill' | 'cardio' | 'custom';
 
 export interface ScheduleConfig {
-  mode: 'weekly' | 'interval' | 'flexible';
+  mode: 'weekly' | 'interval' | 'flexible' | 'rotation';
   daysOfWeek?: number[];  // 0-6 for weekly mode (0 = Sunday)
   intervalDays?: number;  // e.g., every 2 days
 }
@@ -14,6 +14,35 @@ export interface Program {
   schedule: ScheduleConfig;
   isActive: boolean;
   createdAt: string;
+  // GZCLP specific
+  currentWeek?: number;
+  lastWorkoutDay?: number;  // 1-4 for GZCLP rotation
+}
+
+// GZCLP Types
+export type GZCLPTier = 'T1' | 'T2' | 'T3';
+
+export interface GZCLPConfig {
+  tier: GZCLPTier;
+  sets: number;
+  reps: number;
+  amrapSet: number;  // which set is AMRAP (usually last)
+  weightIncrement: number;
+  progressionThreshold: number;
+}
+
+export const GZCLP_CONFIGS: Record<GZCLPTier, GZCLPConfig> = {
+  T1: { tier: 'T1', sets: 5, reps: 3, amrapSet: 5, weightIncrement: 5, progressionThreshold: 5 },
+  T2: { tier: 'T2', sets: 3, reps: 10, amrapSet: 3, weightIncrement: 5, progressionThreshold: 10 },
+  T3: { tier: 'T3', sets: 3, reps: 15, amrapSet: 3, weightIncrement: 5, progressionThreshold: 25 },
+};
+
+export interface GZCLPWorkoutDay {
+  dayNumber: number;  // 1-4
+  name: string;  // e.g., "Day 1 - Squat Focus"
+  t1ExerciseId: string;
+  t2ExerciseId: string;
+  t3ExerciseIds: string[];
 }
 
 // Activity Types
@@ -30,12 +59,37 @@ export interface Activity {
   programId: string;
   trackingType: TrackingType;
   customFields?: CustomField[];
-  // For weightlifting
+  // For weightlifting/GZCLP
   muscleGroups?: string[];
   equipment?: string;
+  tier?: GZCLPTier;
+  startingWeight?: number;
   // For duration-based
   targetDuration?: number;  // minutes
 }
+
+// Default GZCLP Exercise Library
+export const DEFAULT_GZCLP_EXERCISES: Omit<Activity, 'programId'>[] = [
+  // T1 Exercises
+  { id: 'squat', name: 'Squat', trackingType: 'sets-reps-weight', tier: 'T1', muscleGroups: ['Quads', 'Glutes'], equipment: 'Barbell' },
+  { id: 'bench', name: 'Bench Press', trackingType: 'sets-reps-weight', tier: 'T1', muscleGroups: ['Chest', 'Triceps'], equipment: 'Barbell' },
+  { id: 'deadlift', name: 'Deadlift', trackingType: 'sets-reps-weight', tier: 'T1', muscleGroups: ['Back', 'Hamstrings'], equipment: 'Barbell' },
+  { id: 'ohp', name: 'Overhead Press', trackingType: 'sets-reps-weight', tier: 'T1', muscleGroups: ['Shoulders', 'Triceps'], equipment: 'Barbell' },
+  // T2 Exercises
+  { id: 'rdl', name: 'Romanian Deadlift', trackingType: 'sets-reps-weight', tier: 'T2', muscleGroups: ['Hamstrings', 'Back'], equipment: 'Barbell' },
+  { id: 'incline_bench', name: 'Incline Bench Press', trackingType: 'sets-reps-weight', tier: 'T2', muscleGroups: ['Chest', 'Shoulders'], equipment: 'Barbell' },
+  { id: 'bb_row', name: 'Barbell Row', trackingType: 'sets-reps-weight', tier: 'T2', muscleGroups: ['Back', 'Biceps'], equipment: 'Barbell' },
+  { id: 'front_squat', name: 'Front Squat', trackingType: 'sets-reps-weight', tier: 'T2', muscleGroups: ['Quads', 'Core'], equipment: 'Barbell' },
+  { id: 'close_grip_bench', name: 'Close-Grip Bench Press', trackingType: 'sets-reps-weight', tier: 'T2', muscleGroups: ['Triceps', 'Chest'], equipment: 'Barbell' },
+  // T3 Exercises
+  { id: 'lat_pulldown', name: 'Lat Pulldown', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Back', 'Biceps'], equipment: 'Cable' },
+  { id: 'cable_fly', name: 'Cable Fly', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Chest'], equipment: 'Cable' },
+  { id: 'leg_curl', name: 'Leg Curl', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Hamstrings'], equipment: 'Machine' },
+  { id: 'leg_extension', name: 'Leg Extension', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Quads'], equipment: 'Machine' },
+  { id: 'face_pull', name: 'Face Pull', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Shoulders', 'Back'], equipment: 'Cable' },
+  { id: 'db_curl', name: 'Dumbbell Curl', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Biceps'], equipment: 'Dumbbell' },
+  { id: 'tricep_pushdown', name: 'Tricep Pushdown', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Triceps'], equipment: 'Cable' },
+];
 
 // Session Tracking
 export type SessionStatus = 'completed' | 'skipped' | 'partial' | 'in-progress';
@@ -46,6 +100,8 @@ export interface SetLog {
   weight: number;
   reps: number;
   isWarmup: boolean;
+  isAmrap?: boolean;
+  rpe?: number;  // 1-10 scale
   restDuration?: number;  // seconds
   timestamp: string;
 }

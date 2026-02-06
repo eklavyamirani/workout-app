@@ -5,11 +5,12 @@ import type { Program, ProgramType, ScheduleConfig, Activity, TrackingType } fro
 interface CreateProgramProps {
   onComplete: (program: Program, activities: Activity[]) => void;
   onCancel: () => void;
+  onSelectGZCLP?: () => void;
 }
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export function CreateProgram({ onComplete, onCancel }: CreateProgramProps) {
+export function CreateProgram({ onComplete, onCancel, onSelectGZCLP }: CreateProgramProps) {
   const [step, setStep] = useState(1);
   const [programType, setProgramType] = useState<ProgramType | null>(null);
   const [name, setName] = useState('');
@@ -111,8 +112,24 @@ export function CreateProgram({ onComplete, onCancel }: CreateProgramProps) {
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-gray-900">What kind of program?</h2>
             <div className="space-y-2">
+              {/* GZCLP Option */}
+              {onSelectGZCLP && (
+                <button
+                  onClick={onSelectGZCLP}
+                  className="w-full p-4 rounded-lg border-2 text-left transition-colors border-blue-200 bg-blue-50 hover:border-blue-300"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-gray-900">GZCLP Program</div>
+                      <div className="text-sm text-gray-500">Structured 4-day split with T1/T2/T3 tiers and progression</div>
+                    </div>
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Recommended</span>
+                  </div>
+                </button>
+              )}
+              
               {[
-                { type: 'weightlifting' as ProgramType, label: 'Weightlifting', desc: 'Track sets, reps, and weight' },
+                { type: 'weightlifting' as ProgramType, label: 'Simple Weightlifting', desc: 'Track sets, reps, and weight (no tiers)' },
                 { type: 'skill' as ProgramType, label: 'Skill Practice', desc: 'Duration-based practice sessions' },
                 { type: 'cardio' as ProgramType, label: 'Cardio', desc: 'Track duration and distance' },
                 { type: 'custom' as ProgramType, label: 'Custom', desc: 'Define your own tracking' },

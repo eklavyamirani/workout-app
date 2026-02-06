@@ -49,8 +49,8 @@ function getScheduledSessionsForDate(
 
     if (program.schedule.mode === 'weekly') {
       isScheduled = program.schedule.daysOfWeek?.includes(dayOfWeek) ?? false;
-    } else if (program.schedule.mode === 'flexible') {
-      // Flexible programs show every day
+    } else if (program.schedule.mode === 'flexible' || program.schedule.mode === 'rotation') {
+      // Flexible and rotation programs show every day (rotation determines which workout)
       isScheduled = true;
     } else if (program.schedule.mode === 'interval') {
       // For interval, calculate based on creation date

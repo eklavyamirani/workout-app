@@ -3,11 +3,12 @@ import { Dumbbell, Plus, Calendar } from 'lucide-react';
 import { storage, programStorage, activityStorage, sessionStorage } from './storage/adapter';
 import { ProgramList } from './components/ProgramList';
 import { CreateProgram } from './components/CreateProgram';
+import { GZCLPSetup } from './components/GZCLPSetup';
 import { RollingCalendar } from './components/RollingCalendar';
 import { SessionView } from './components/SessionView';
-import type { Program, Activity, Session } from './types';
+import type { Program, Activity, Session, GZCLPWorkoutDay } from './types';
 
-type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'session';
+type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'session';
 
 export default function App() {
   const [view, setView] = useState<ViewType>('loading');
@@ -89,6 +90,16 @@ export default function App() {
     setActivities({ ...activities, [program.id]: programActivities });
   }
 
+  async function handleGZCLPComplete(program: Program, programActivities: Activity[], workoutDays: GZCLPWorkoutDay[]) {
+    await programStorage.save(program);
+    await activityStorage.saveAll(program.id, programActivities);
+    await storage.set(`gzclp:${program.id}:days`, workoutDays);
+    
+    setPrograms([...programs, program]);
+    setActivities({ ...activities, [program.id]: programActivities });
+    setView('home');
+  }
+
   async function handleStartSession(programId: string, date: string) {
     const program = programs.find(p => p.id === programId);
     if (!program) return;
@@ -166,6 +177,16 @@ export default function App() {
     return (
       <CreateProgram
         onComplete={handleCreateProgram}
+        onCancel={() => setView('home')}
+        onSelectGZCLP={() => setView('gzclp-setup')}
+      />
+    );
+  }
+
+  if (view === 'gzclp-setup') {
+    return (
+      <GZCLPSetup
+        onComplete={handleGZCLPComplete}
         onCancel={() => setView('home')}
       />
     );

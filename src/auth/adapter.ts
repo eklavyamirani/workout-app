@@ -38,10 +38,10 @@ export interface AuthAdapter {
 }
 
 // Select the appropriate adapter based on environment
-const enableAuth = import.meta.env.VITE_ENABLE_AUTH === 'true';
+export const isAuthEnabled = () => import.meta.env.VITE_ENABLE_AUTH === 'true';
 
 export const getAuthAdapter = async (): Promise<AuthAdapter> => {
-  if (enableAuth) {
+  if (isAuthEnabled()) {
     const { supabaseAdapter } = await import('./supabaseAdapter');
     return supabaseAdapter;
   } else {

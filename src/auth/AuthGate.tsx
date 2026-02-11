@@ -8,6 +8,7 @@
 
 import React from 'react';
 import { useAuth } from './AuthProvider';
+import { isAuthEnabled } from './adapter';
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -39,9 +40,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   // When auth is disabled (noop adapter), user will be the mock local user
   // When auth is enabled, user will be null if not authenticated
   // For now, we just pass through - login UI could be added here later
-  const isAuthEnabled = import.meta.env.VITE_ENABLE_AUTH === 'true';
-  
-  if (isAuthEnabled && !user) {
+  if (isAuthEnabled() && !user) {
     // In production with auth enabled, could show a login page here
     // For now, just pass through to allow the app to handle it
     return <>{children}</>;

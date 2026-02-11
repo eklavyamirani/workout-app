@@ -36,15 +36,8 @@ class SupabaseAdapter implements AuthAdapter {
   }
 
   async signInWithOAuth(provider: 'google' | 'github' | 'azure' | 'apple'): Promise<{ error?: Error }> {
-    const providerMap: Record<typeof provider, 'google' | 'github' | 'azure' | 'apple'> = {
-      google: 'google',
-      github: 'github',
-      azure: 'azure',
-      apple: 'apple',
-    };
-
     const { error } = await this.client.auth.signInWithOAuth({
-      provider: providerMap[provider],
+      provider,
       options: {
         redirectTo: window.location.origin,
       },

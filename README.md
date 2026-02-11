@@ -8,6 +8,7 @@ This application is a workout tracker that I want to use to track my workouts. M
 ## Features
 - Customize your workout plan and use progress from last week as a blueprint for the following week.
 - Track weights, progress and derive insights.
+- **Optional Authentication**: Feature-flagged auth layer supporting local development without external dependencies, and Supabase Auth (magic link + OAuth) in production.
 
 ## Preview
 Below is a preview of the application:
@@ -24,6 +25,12 @@ Below is a preview of the application:
    ```bash
    npm install
    ```
+3. Copy the example environment file and configure if needed:
+   ```bash
+   cp .env.local.example .env.local
+   # For local development, VITE_ENABLE_AUTH=false is already set
+   # No Supabase credentials needed for local dev
+   ```
 
 ## Usage (Dev)
 1. Start the development server:
@@ -31,6 +38,39 @@ Below is a preview of the application:
    npm run dev
    ```
 2. Open the application in your browser at the URL provided by the development server.
+
+## Authentication
+
+The app includes an optional feature-flagged authentication layer using an adapter pattern.
+
+### Local Development (Default)
+- Authentication is **disabled** by default (`VITE_ENABLE_AUTH=false`)
+- Uses a no-op adapter that provides a mock user
+- No Supabase credentials required
+- App continues to use localStorage for all data
+
+### Production/Staging
+To enable Supabase authentication:
+
+1. Set environment variables:
+   ```bash
+   VITE_ENABLE_AUTH=true
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key-here
+   ```
+
+2. Supported auth methods:
+   - Magic link (email)
+   - OAuth providers: Google, GitHub, Microsoft/Azure, Apple
+
+3. The app will use the real Supabase adapter for authentication
+
+### Architecture
+- `src/auth/adapter.ts`: Auth interface and adapter selector
+- `src/auth/noopAdapter.ts`: No-op implementation for local dev
+- `src/auth/supabaseAdapter.ts`: Real Supabase implementation
+- `src/auth/AuthProvider.tsx`: React context for auth state
+- `src/auth/AuthGate.tsx`: Gate component with loading state
 
 ## Testing (E2E)
 End-to-end tests are written using Playwright and validate all major user flows.

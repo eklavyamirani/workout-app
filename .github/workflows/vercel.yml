@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: staging-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest
@@ -32,7 +35,9 @@ jobs:
 
       - name: Deploy to staging
         id: deploy
-        run: echo "url=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})" >> "$GITHUB_OUTPUT"
+        run: |
+          url=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --no-color | tail -n 1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

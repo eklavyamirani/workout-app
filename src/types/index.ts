@@ -1,5 +1,5 @@
 // Program Types
-export type ProgramType = 'weightlifting' | 'gzclp' | 'skill' | 'cardio' | 'custom';
+export type ProgramType = 'weightlifting' | 'gzclp' | 'ballet' | 'skill' | 'cardio' | 'custom';
 
 export interface ScheduleConfig {
   mode: 'weekly' | 'interval' | 'flexible' | 'rotation';
@@ -90,6 +90,60 @@ export const DEFAULT_GZCLP_EXERCISES: Omit<Activity, 'programId'>[] = [
   { id: 'db_curl', name: 'Dumbbell Curl', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Biceps'], equipment: 'Dumbbell' },
   { id: 'tricep_pushdown', name: 'Tricep Pushdown', trackingType: 'sets-reps-weight', tier: 'T3', muscleGroups: ['Triceps'], equipment: 'Cable' },
 ];
+
+// Ballet Types
+export type BalletClassType = 'full' | 'barre-only' | 'center-only' | 'pointe';
+export type BalletLevel = 'beginner' | 'intermediate' | 'advanced';
+export type BalletSection = 'barre' | 'center' | 'pointe' | 'cooldown';
+
+export interface BalletExercise {
+  id: string;
+  name: string;
+  section: BalletSection;
+  defaultDuration: number; // minutes
+  levels: BalletLevel[];
+}
+
+export const DEFAULT_BALLET_EXERCISES: BalletExercise[] = [
+  // Barre
+  { id: 'plies', name: 'Pliés', section: 'barre', defaultDuration: 5, levels: ['beginner', 'intermediate', 'advanced'] },
+  { id: 'tendus', name: 'Tendus', section: 'barre', defaultDuration: 4, levels: ['beginner', 'intermediate', 'advanced'] },
+  { id: 'degages', name: 'Dégagés', section: 'barre', defaultDuration: 4, levels: ['beginner', 'intermediate', 'advanced'] },
+  { id: 'rond_de_jambe', name: 'Rond de jambe', section: 'barre', defaultDuration: 5, levels: ['beginner', 'intermediate', 'advanced'] },
+  { id: 'fondus', name: 'Fondus', section: 'barre', defaultDuration: 5, levels: ['intermediate', 'advanced'] },
+  { id: 'frappes', name: 'Frappés', section: 'barre', defaultDuration: 4, levels: ['intermediate', 'advanced'] },
+  { id: 'adagio_barre', name: 'Adagio (Développés)', section: 'barre', defaultDuration: 6, levels: ['intermediate', 'advanced'] },
+  { id: 'grand_battement', name: 'Grand battement', section: 'barre', defaultDuration: 4, levels: ['beginner', 'intermediate', 'advanced'] },
+  // Center
+  { id: 'adagio_center', name: 'Adagio', section: 'center', defaultDuration: 6, levels: ['beginner', 'intermediate', 'advanced'] },
+  { id: 'pirouettes', name: 'Pirouettes / Turns', section: 'center', defaultDuration: 8, levels: ['intermediate', 'advanced'] },
+  { id: 'petit_allegro', name: 'Petit allegro', section: 'center', defaultDuration: 8, levels: ['beginner', 'intermediate', 'advanced'] },
+  { id: 'grand_allegro', name: 'Grand allegro', section: 'center', defaultDuration: 8, levels: ['intermediate', 'advanced'] },
+  { id: 'reverence', name: 'Révérence', section: 'center', defaultDuration: 3, levels: ['beginner', 'intermediate', 'advanced'] },
+  // Pointe
+  { id: 'releves_barre', name: 'Relevés at barre', section: 'pointe', defaultDuration: 5, levels: ['intermediate', 'advanced'] },
+  { id: 'echappes', name: 'Échappés', section: 'pointe', defaultDuration: 5, levels: ['intermediate', 'advanced'] },
+  { id: 'bourrees', name: 'Bourrées', section: 'pointe', defaultDuration: 5, levels: ['intermediate', 'advanced'] },
+  { id: 'pointe_center', name: 'Pointe center work', section: 'pointe', defaultDuration: 10, levels: ['advanced'] },
+  // Cool-down
+  { id: 'floor_stretches', name: 'Floor stretches', section: 'cooldown', defaultDuration: 10, levels: ['beginner', 'intermediate', 'advanced'] },
+  { id: 'cooldown', name: 'Cool-down', section: 'cooldown', defaultDuration: 5, levels: ['beginner', 'intermediate', 'advanced'] },
+];
+
+export function getBalletExercisesForClass(classType: BalletClassType, level: BalletLevel): BalletExercise[] {
+  const exercises = DEFAULT_BALLET_EXERCISES.filter(e => e.levels.includes(level));
+
+  switch (classType) {
+    case 'full':
+      return exercises.filter(e => e.section === 'barre' || e.section === 'center' || e.section === 'cooldown');
+    case 'barre-only':
+      return exercises.filter(e => e.section === 'barre' || e.section === 'cooldown');
+    case 'center-only':
+      return exercises.filter(e => e.section === 'center' || e.section === 'cooldown');
+    case 'pointe':
+      return exercises.filter(e => e.section === 'pointe' || e.section === 'cooldown');
+  }
+}
 
 // Session Tracking
 export type SessionStatus = 'completed' | 'skipped' | 'partial' | 'in-progress';

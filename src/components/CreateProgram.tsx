@@ -6,11 +6,12 @@ interface CreateProgramProps {
   onComplete: (program: Program, activities: Activity[]) => void;
   onCancel: () => void;
   onSelectGZCLP?: () => void;
+  onSelectBallet?: () => void;
 }
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export function CreateProgram({ onComplete, onCancel, onSelectGZCLP }: CreateProgramProps) {
+export function CreateProgram({ onComplete, onCancel, onSelectGZCLP, onSelectBallet }: CreateProgramProps) {
   const [step, setStep] = useState(1);
   const [programType, setProgramType] = useState<ProgramType | null>(null);
   const [name, setName] = useState('');
@@ -128,6 +129,22 @@ export function CreateProgram({ onComplete, onCancel, onSelectGZCLP }: CreatePro
                 </button>
               )}
               
+              {/* Ballet Option */}
+              {onSelectBallet && (
+                <button
+                  onClick={onSelectBallet}
+                  className="w-full p-4 rounded-lg border-2 text-left transition-colors border-purple-200 bg-purple-50 hover:border-purple-300"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-gray-900">Ballet Class</div>
+                      <div className="text-sm text-gray-500">Pre-built barre + center with level-based templates</div>
+                    </div>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">New</span>
+                  </div>
+                </button>
+              )}
+
               {[
                 { type: 'weightlifting' as ProgramType, label: 'Simple Weightlifting', desc: 'Track sets, reps, and weight (no tiers)' },
                 { type: 'skill' as ProgramType, label: 'Skill Practice', desc: 'Duration-based practice sessions' },

@@ -4,11 +4,12 @@ import { storage, programStorage, activityStorage, sessionStorage } from './stor
 import { ProgramList } from './components/ProgramList';
 import { CreateProgram } from './components/CreateProgram';
 import { GZCLPSetup } from './components/GZCLPSetup';
+import { BalletSetup } from './components/BalletSetup';
 import { RollingCalendar } from './components/RollingCalendar';
 import { SessionView } from './components/SessionView';
 import type { Program, Activity, Session, GZCLPWorkoutDay } from './types';
 
-type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'session';
+type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'ballet-setup' | 'session';
 
 export default function App() {
   const [view, setView] = useState<ViewType>('loading');
@@ -179,6 +180,7 @@ export default function App() {
         onComplete={handleCreateProgram}
         onCancel={() => setView('home')}
         onSelectGZCLP={() => setView('gzclp-setup')}
+        onSelectBallet={() => setView('ballet-setup')}
       />
     );
   }
@@ -187,6 +189,15 @@ export default function App() {
     return (
       <GZCLPSetup
         onComplete={handleGZCLPComplete}
+        onCancel={() => setView('home')}
+      />
+    );
+  }
+
+  if (view === 'ballet-setup') {
+    return (
+      <BalletSetup
+        onComplete={handleCreateProgram}
         onCancel={() => setView('home')}
       />
     );

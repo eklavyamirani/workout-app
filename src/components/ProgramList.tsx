@@ -14,6 +14,7 @@ interface ProgramListProps {
 
 const PROGRAM_TYPE_LABELS: Record<string, string> = {
   weightlifting: 'Weightlifting',
+  ballet: 'Ballet',
   skill: 'Skill Practice',
   cardio: 'Cardio',
   custom: 'Custom',

@@ -20,6 +20,7 @@ export default function App() {
     program: Program;
     activities: Activity[];
     session: Session;
+    lastPracticeNotes?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -107,7 +108,7 @@ export default function App() {
 
     const programActivities = activities[programId] || [];
     const sessionKey = `${date}:${programId}`;
-    
+
     let session = sessions[sessionKey];
     if (!session) {
       session = {
@@ -122,10 +123,27 @@ export default function App() {
       setSessions({ ...sessions, [sessionKey]: session });
     }
 
+    // For ballet programs, find the last completed session's practiceNext notes
+    let lastPracticeNotes: string | undefined;
+    if (program.type === 'ballet') {
+      const allKeys = await storage.list(`sessions:`);
+      let latestDate = '';
+      for (const key of allKeys) {
+        const s = await storage.get<Session>(key);
+        if (s && s.programId === programId && s.status === 'completed' && s.practiceNext && s.date < date) {
+          if (s.date > latestDate) {
+            latestDate = s.date;
+            lastPracticeNotes = s.practiceNext;
+          }
+        }
+      }
+    }
+
     setCurrentSession({
       program,
       activities: programActivities,
       session,
+      lastPracticeNotes,
     });
     setView('session');
   }
@@ -209,6 +227,7 @@ export default function App() {
         program={currentSession.program}
         activities={currentSession.activities}
         session={currentSession.session}
+        lastPracticeNotes={currentSession.lastPracticeNotes}
         onUpdateSession={handleUpdateSession}
         onComplete={handleCompleteSession}
         onCancel={() => {

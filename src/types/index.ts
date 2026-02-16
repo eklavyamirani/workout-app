@@ -183,6 +183,7 @@ export interface Session {
   duration?: number;  // total minutes
   activities: ActivityLog[];
   notes?: string;
+  practiceNext?: string;  // what to practice next session
   skipReason?: string;
 }
 
@@ -195,6 +196,45 @@ export interface ScheduledSession {
   activities: Activity[];
   session?: Session;  // filled if started/completed
 }
+
+// Ballet Glossary
+export interface GlossaryEntry {
+  term: string;
+  pronunciation: string;
+  description: string;
+  searchQuery: string;  // for YouTube search
+}
+
+export const BALLET_GLOSSARY: GlossaryEntry[] = [
+  { term: 'Plié', pronunciation: 'plee-AY', description: 'Bending of the knees over the toes. Demi-plié is a half bend, grand plié is a full bend.', searchQuery: 'ballet plié tutorial beginner' },
+  { term: 'Tendu', pronunciation: 'tahn-DOO', description: 'Stretching the leg along the floor until only the tip of the toe remains touching.', searchQuery: 'ballet tendu tutorial beginner' },
+  { term: 'Dégagé', pronunciation: 'day-gah-ZHAY', description: 'Like tendu but the foot lifts slightly off the floor. A "disengaged" movement.', searchQuery: 'ballet dégagé tutorial beginner' },
+  { term: 'Rond de jambe', pronunciation: 'rohn duh ZHAHMB', description: 'Circular movement of the leg on the floor (à terre) or in the air (en l\'air).', searchQuery: 'ballet rond de jambe tutorial' },
+  { term: 'Fondu', pronunciation: 'fohn-DOO', description: 'A melting movement — slowly bending the supporting leg while extending the working leg.', searchQuery: 'ballet fondu tutorial' },
+  { term: 'Frappé', pronunciation: 'frah-PAY', description: 'A striking action where the ball of the foot brushes the floor with a sharp, quick movement.', searchQuery: 'ballet frappé tutorial' },
+  { term: 'Développé', pronunciation: 'dayv-law-PAY', description: 'Slowly unfolding the working leg to an extended position in the air.', searchQuery: 'ballet développé tutorial' },
+  { term: 'Grand battement', pronunciation: 'grahn bat-MAHN', description: 'A large, swift leg kick maintaining a controlled upper body.', searchQuery: 'ballet grand battement tutorial' },
+  { term: 'Relevé', pronunciation: 'ruh-leh-VAY', description: 'Rising up onto the balls of the feet (demi-pointe) or onto pointe.', searchQuery: 'ballet relevé tutorial beginner' },
+  { term: 'Pas de bourrée', pronunciation: 'pah duh boo-RAY', description: 'A quick three-step linking movement that shifts weight from one foot to the other.', searchQuery: 'ballet pas de bourrée tutorial beginner' },
+  { term: 'Balancé', pronunciation: 'bah-lahn-SAY', description: 'A rocking waltz step — step side, shift weight behind, shift weight front. Done in 3/4 time.', searchQuery: 'ballet balancé tutorial beginner' },
+  { term: 'Glissade', pronunciation: 'glee-SAHD', description: 'A gliding step that travels sideways. Used as a connecting movement before jumps.', searchQuery: 'ballet glissade tutorial beginner' },
+  { term: 'Chassé', pronunciation: 'shah-SAY', description: 'A sliding step where one foot "chases" the other. Travels in any direction.', searchQuery: 'ballet chassé tutorial beginner' },
+  { term: 'Sauté', pronunciation: 'soh-TAY', description: 'A jump from two feet landing on two feet, starting and ending in a plié.', searchQuery: 'ballet sauté tutorial beginner' },
+  { term: 'Changement', pronunciation: 'shahnzh-MAHN', description: 'A jump from fifth position switching the front foot in the air.', searchQuery: 'ballet changement tutorial beginner' },
+  { term: 'Échappé', pronunciation: 'ay-shah-PAY', description: 'An "escaping" movement — jumping from a closed to an open position (and back).', searchQuery: 'ballet échappé tutorial' },
+  { term: 'Assemblé', pronunciation: 'ah-sahm-BLAY', description: 'A jump where the working leg slides out before both legs join ("assemble") in the air.', searchQuery: 'ballet assemblé tutorial beginner' },
+  { term: 'Jeté', pronunciation: 'zhuh-TAY', description: 'A jump from one foot to the other with a "throwing" action of the working leg.', searchQuery: 'ballet jeté tutorial beginner' },
+  { term: 'Pirouette', pronunciation: 'peer-oh-WET', description: 'A complete turn of the body on one leg, usually on demi-pointe or pointe.', searchQuery: 'ballet pirouette tutorial beginner' },
+  { term: 'Arabesque', pronunciation: 'ah-rah-BESK', description: 'A position on one leg with the other leg extended behind at 90° or more.', searchQuery: 'ballet arabesque tutorial beginner' },
+  { term: 'Adagio', pronunciation: 'ah-DAH-zhee-oh', description: 'Slow, sustained movements emphasizing balance, extension, and control.', searchQuery: 'ballet adagio tutorial' },
+  { term: 'Allegro', pronunciation: 'ah-LEH-groh', description: 'Fast, energetic movements — petit (small jumps) or grand (big jumps/leaps).', searchQuery: 'ballet allegro tutorial' },
+  { term: 'Port de bras', pronunciation: 'por duh BRAH', description: 'Carriage of the arms — the positions and movements of the arms.', searchQuery: 'ballet port de bras tutorial beginner' },
+  { term: 'Révérence', pronunciation: 'ray-vay-RAHNSS', description: 'The curtsy or bow at the end of class to thank the teacher and pianist.', searchQuery: 'ballet révérence tutorial' },
+  { term: 'Waltz step', pronunciation: 'waltz', description: 'A three-count step (step-step-close) done in 3/4 time, traveling across the floor.', searchQuery: 'ballet waltz step tutorial beginner' },
+  { term: 'Bourrée', pronunciation: 'boo-RAY', description: 'Tiny, quick steps on pointe or demi-pointe that create a gliding effect.', searchQuery: 'ballet bourrée tutorial' },
+  { term: 'Sous-sus', pronunciation: 'soo-SOO', description: 'Rising to pointe or demi-pointe in a tight fifth position, feet pressed together.', searchQuery: 'ballet sous-sus tutorial beginner' },
+  { term: 'Tombé', pronunciation: 'tohm-BAY', description: 'A "falling" step — transferring weight by stepping onto a bent leg.', searchQuery: 'ballet tombé tutorial beginner' },
+];
 
 // Program Export/Import
 export interface ProgramExport {

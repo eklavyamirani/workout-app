@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Play, Pause, Check, Plus, Minus } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen } from 'lucide-react';
 import type { Program, Activity, Session, ActivityLog, SetLog } from '../types';
+import { BalletGlossary } from './BalletGlossary';
 
 interface SessionViewProps {
   program: Program;
   activities: Activity[];
   session: Session;
+  lastPracticeNotes?: string;
   onUpdateSession: (session: Session) => void;
   onComplete: (session: Session) => void;
   onCancel: () => void;
@@ -21,6 +23,7 @@ export function SessionView({
   program,
   activities,
   session,
+  lastPracticeNotes,
   onUpdateSession,
   onComplete,
   onCancel,
@@ -29,6 +32,11 @@ export function SessionView({
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [notes, setNotes] = useState(session.notes || '');
+  const [practiceNext, setPracticeNext] = useState(session.practiceNext || '');
+  const [showGlossary, setShowGlossary] = useState(false);
+  const [dismissedCarryForward, setDismissedCarryForward] = useState(false);
+
+  const isBallet = program.type === 'ballet';
 
   // For weightlifting
   const [currentWeight, setCurrentWeight] = useState(0);
@@ -127,6 +135,7 @@ export function SessionView({
       endTime: new Date().toISOString(),
       duration: Math.floor((Date.now() - new Date(session.startTime!).getTime()) / 60000),
       notes: notes || undefined,
+      practiceNext: practiceNext || undefined,
     };
     onComplete(completedSession);
   }
@@ -155,18 +164,49 @@ export function SessionView({
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleFinish}
-              disabled={!allActivitiesComplete}
-              className="px-4 py-2 bg-green-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-600 transition-colors"
-            >
-              Finish
-            </button>
+            <div className="flex items-center gap-2">
+              {isBallet && (
+                <button
+                  onClick={() => setShowGlossary(true)}
+                  className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
+                  title="Movement glossary"
+                >
+                  <BookOpen className="w-5 h-5" />
+                </button>
+              )}
+              <button
+                onClick={handleFinish}
+                disabled={!allActivitiesComplete}
+                className="px-4 py-2 bg-green-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-600 transition-colors"
+              >
+                Finish
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto p-4">
+        {/* Carry-forward notes from last session */}
+        {isBallet && lastPracticeNotes && !dismissedCarryForward && (
+          <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-purple-800 uppercase tracking-wide mb-1">
+                  From last class
+                </h3>
+                <p className="text-sm text-purple-700 whitespace-pre-wrap">{lastPracticeNotes}</p>
+              </div>
+              <button
+                onClick={() => setDismissedCarryForward(true)}
+                className="text-purple-400 hover:text-purple-600 text-lg leading-none p-1"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Activity Tabs */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
           {activities.map((activity, index) => {
@@ -354,7 +394,25 @@ export function SessionView({
             rows={2}
           />
         </div>
+
+        {/* Practice next week (ballet only) */}
+        {isBallet && (
+          <div className="mt-4 bg-white rounded-lg border border-purple-200 p-4">
+            <label className="block text-sm font-semibold text-purple-600 uppercase mb-2">
+              Practice next week
+            </label>
+            <textarea
+              value={practiceNext}
+              onChange={(e) => setPracticeNext(e.target.value)}
+              placeholder="What do you want to work on next time? e.g. pas de bourrée transitions, spotting for turns..."
+              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              rows={3}
+            />
+          </div>
+        )}
       </div>
+
+      {showGlossary && <BalletGlossary onClose={() => setShowGlossary(false)} />}
     </div>
   );
 }

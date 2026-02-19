@@ -173,6 +173,16 @@ export default function App() {
     }
   }
 
+  async function handleUpdateActivities(programId: string, updatedActivities: Activity[]) {
+    await activityStorage.saveAll(programId, updatedActivities);
+    setActivities({ ...activities, [programId]: updatedActivities });
+
+    // Also update currentSession if it's for the same program
+    if (currentSession && currentSession.program.id === programId) {
+      setCurrentSession({ ...currentSession, activities: updatedActivities });
+    }
+  }
+
   async function handleCompleteSession(session: Session) {
     await sessionStorage.save(session);
     const sessionKey = `${session.date}:${session.programId}`;
@@ -230,6 +240,9 @@ export default function App() {
         lastPracticeNotes={currentSession.lastPracticeNotes}
         onUpdateSession={handleUpdateSession}
         onComplete={handleCompleteSession}
+        onUpdateActivities={(updatedActivities) =>
+          handleUpdateActivities(currentSession.program.id, updatedActivities)
+        }
         onCancel={() => {
           setCurrentSession(null);
           setView('home');

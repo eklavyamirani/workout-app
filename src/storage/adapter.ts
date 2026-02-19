@@ -1,4 +1,4 @@
-import type { Program, Activity, Session } from '../types';
+import type { Program, Activity, Session, ExerciseReference } from '../types';
 
 // Storage key patterns:
 // - programs:list -> string[] (array of program IDs)
@@ -128,4 +128,24 @@ export const sessionStorage = {
     }
     return sessions;
   }
+};
+
+export const referenceStorage = {
+  async get(exerciseId: string): Promise<ExerciseReference | null> {
+    return storage.get<ExerciseReference>(`references:${exerciseId}`);
+  },
+
+  async save(ref: ExerciseReference): Promise<boolean> {
+    return storage.set(`references:${ref.exerciseId}`, ref);
+  },
+
+  async getAll(): Promise<ExerciseReference[]> {
+    const keys = await storage.list('references:');
+    const refs: ExerciseReference[] = [];
+    for (const key of keys) {
+      const ref = await storage.get<ExerciseReference>(key);
+      if (ref) refs.push(ref);
+    }
+    return refs;
+  },
 };

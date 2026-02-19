@@ -352,6 +352,25 @@ export const BALLET_GLOSSARY: GlossaryEntry[] = [
   { term: 'Révérence', pronunciation: 'ray-vay-RAHNSS', description: 'The curtsy or bow at the end of class to thank the teacher and pianist.', searchQuery: 'ballet révérence tutorial' },
 ];
 
+// Routine Builder (shared between BalletSetup and SessionView editing)
+export interface RoutineEntry {
+  id: string;
+  name: string;
+  section: BalletSection;
+  notes: string;
+  movements: BalletMovement[];
+  collapsed: boolean;
+}
+
+// Exercise References (global per exercise)
+export interface ExerciseReference {
+  exerciseId: string;
+  youtubeLinks: string[];
+  note?: string;
+  glossaryTerm?: string; // override auto-matched glossary term
+  updatedAt: string;
+}
+
 // Program Export/Import
 export interface ProgramExport {
   version: 1;

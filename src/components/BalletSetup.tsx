@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Check, Plus, Minus, X } from 'lucide-react';
+import { ArrowLeft, Check, Plus, X } from 'lucide-react';
 import type {
   Program,
   Activity,
@@ -40,7 +40,7 @@ const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface ExerciseEntry {
   exercise: BalletExercise;
-  duration: number;
+  description: string;
   enabled: boolean;
 }
 
@@ -60,14 +60,13 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
   const [newCustom, setNewCustom] = useState({
     name: '',
     section: 'center' as BalletSection,
-    defaultDuration: 5,
     levels: ['beginner', 'intermediate', 'advanced'] as BalletLevel[],
   });
 
   function handleSelectLevel(selectedLevel: BalletLevel) {
     setLevel(selectedLevel);
     const selected = getBalletExercisesForClass(classType!, selectedLevel);
-    setExercises(selected.map(e => ({ exercise: e, duration: e.defaultDuration, enabled: true })));
+    setExercises(selected.map(e => ({ exercise: e, description: '', enabled: true })));
 
     const classLabel = CLASS_TYPES.find(c => c.type === classType)?.label || 'Ballet';
     const levelLabel = LEVELS.find(l => l.level === selectedLevel)?.label || '';
@@ -78,9 +77,9 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
     setExercises(prev => prev.map((e, i) => i === index ? { ...e, enabled: !e.enabled } : e));
   }
 
-  function updateDuration(index: number, delta: number) {
+  function updateDescription(index: number, description: string) {
     setExercises(prev => prev.map((e, i) =>
-      i === index ? { ...e, duration: Math.max(1, e.duration + delta) } : e
+      i === index ? { ...e, description } : e
     ));
   }
 
@@ -89,7 +88,7 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
   }
 
   function addExercise(exercise: BalletExercise) {
-    setExercises(prev => [...prev, { exercise, duration: exercise.defaultDuration, enabled: true }]);
+    setExercises(prev => [...prev, { exercise, description: '', enabled: true }]);
     setShowAddExercise(false);
     setLibrarySearch('');
     setAddMode('library');
@@ -102,12 +101,12 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
       id,
       name: newCustom.name.trim(),
       section: newCustom.section,
-      defaultDuration: newCustom.defaultDuration,
+      defaultDuration: 0,
       levels: newCustom.levels,
     };
     setCustomExercises(prev => [...prev, exercise]);
-    setExercises(prev => [...prev, { exercise, duration: exercise.defaultDuration, enabled: true }]);
-    setNewCustom({ name: '', section: 'center', defaultDuration: 5, levels: ['beginner', 'intermediate', 'advanced'] });
+    setExercises(prev => [...prev, { exercise, description: '', enabled: true }]);
+    setNewCustom({ name: '', section: 'center', levels: ['beginner', 'intermediate', 'advanced'] });
     setShowAddExercise(false);
     setAddMode('library');
   }
@@ -150,15 +149,14 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
       id: `${programId}_${e.exercise.id}`,
       name: e.exercise.name,
       programId,
-      trackingType: 'duration' as const,
-      targetDuration: e.duration,
+      trackingType: 'completion' as const,
+      description: e.description || undefined,
     }));
 
     onComplete(program, programActivities);
   }
 
   const enabledCount = exercises.filter(e => e.enabled).length;
-  const totalDuration = exercises.filter(e => e.enabled).reduce((sum, e) => sum + e.duration, 0);
   const canProceedStep3 = enabledCount > 0;
   const canProceedStep4 = scheduleMode === 'flexible' ||
     (scheduleMode === 'weekly' && daysOfWeek.length > 0) ||
@@ -289,7 +287,7 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Review your class</h2>
                 <p className="text-sm text-gray-500">
-                  {enabledCount} exercises &middot; ~{totalDuration} min total
+                  {enabledCount} exercises
                 </p>
               </div>
               <button
@@ -321,53 +319,47 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
                   return (
                     <div
                       key={entry.exercise.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                      className={`p-3 rounded-lg border transition-colors ${
                         entry.enabled
                           ? 'bg-white border-gray-200'
                           : 'bg-gray-50 border-gray-100 opacity-50'
                       }`}
                     >
-                      <button
-                        onClick={() => toggleExercise(globalIndex)}
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                          entry.enabled
-                            ? 'border-purple-500 bg-purple-500'
-                            : 'border-gray-300'
-                        }`}
-                      >
-                        {entry.enabled && <Check className="w-3 h-3 text-white" />}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => toggleExercise(globalIndex)}
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                            entry.enabled
+                              ? 'border-purple-500 bg-purple-500'
+                              : 'border-gray-300'
+                          }`}
+                        >
+                          {entry.enabled && <Check className="w-3 h-3 text-white" />}
+                        </button>
 
-                      <span className="flex-1 font-medium text-gray-900 text-sm">
-                        {entry.exercise.name}
-                      </span>
+                        <span className="flex-1 font-medium text-gray-900 text-sm">
+                          {entry.exercise.name}
+                        </span>
+
+                        <button
+                          onClick={() => removeExercise(globalIndex)}
+                          className="p-1 text-gray-300 hover:text-red-400 rounded"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
 
                       {entry.enabled && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => updateDuration(globalIndex, -1)}
-                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="text-sm text-gray-600 w-12 text-center">
-                            {entry.duration} min
-                          </span>
-                          <button
-                            onClick={() => updateDuration(globalIndex, 1)}
-                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
+                        <div className="mt-2 ml-8">
+                          <textarea
+                            value={entry.description}
+                            onChange={(e) => updateDescription(globalIndex, e.target.value)}
+                            placeholder="Describe the routine/combination, e.g., tombé pas de bourrée, step into 4th, retiré, 2 balancés..."
+                            className="w-full p-2 text-sm border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            rows={2}
+                          />
                         </div>
                       )}
-
-                      <button
-                        onClick={() => removeExercise(globalIndex)}
-                        className="p-1 text-gray-300 hover:text-red-400 rounded"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
                     </div>
                   );
                 })}
@@ -535,7 +527,7 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
                       >
                         <div className="font-medium text-gray-900">{exercise.name}</div>
                         <div className="text-xs text-gray-500">
-                          {SECTION_LABELS[exercise.section]} &middot; {exercise.defaultDuration} min
+                          {SECTION_LABELS[exercise.section]}
                         </div>
                       </button>
                     ))}
@@ -586,32 +578,6 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
                           {SECTION_LABELS[sec]}
                         </button>
                       ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Default duration</label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setNewCustom({ ...newCustom, defaultDuration: Math.max(1, newCustom.defaultDuration - 1) })}
-                        className="p-2 border border-gray-300 rounded hover:bg-gray-50"
-                      >
-                        <Minus className="w-4 h-4" />
-                      </button>
-                      <input
-                        type="number"
-                        min="1"
-                        value={newCustom.defaultDuration}
-                        onChange={(e) => setNewCustom({ ...newCustom, defaultDuration: Math.max(1, parseInt(e.target.value) || 1) })}
-                        className="w-20 p-2 border border-gray-300 rounded text-center"
-                      />
-                      <span className="text-sm text-gray-500">min</span>
-                      <button
-                        onClick={() => setNewCustom({ ...newCustom, defaultDuration: newCustom.defaultDuration + 1 })}
-                        className="p-2 border border-gray-300 rounded hover:bg-gray-50"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
 

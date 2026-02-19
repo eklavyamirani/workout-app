@@ -37,6 +37,7 @@ export function SessionView({
   const [dismissedCarryForward, setDismissedCarryForward] = useState(false);
 
   const isBallet = program.type === 'ballet';
+  const [activityNotes, setActivityNotes] = useState<Record<string, string>>({});
 
   // For weightlifting
   const [currentWeight, setCurrentWeight] = useState(0);
@@ -64,12 +65,16 @@ export function SessionView({
   function markActivityComplete() {
     const updatedActivities = [...session.activities];
     const existingIndex = updatedActivities.findIndex(a => a.activityId === currentActivity.id);
-    
+
+    const activityNote = activityNotes[currentActivity.id];
     const log: ActivityLog = {
       activityId: currentActivity.id,
       trackingType: currentActivity.trackingType,
-      duration: Math.floor(timerSeconds / 60),
+      ...(currentActivity.trackingType === 'completion'
+        ? {}
+        : { duration: Math.floor(timerSeconds / 60) }),
       completed: true,
+      ...(activityNote ? { notes: activityNote } : {}),
     };
 
     if (existingIndex >= 0) {
@@ -225,7 +230,7 @@ export function SessionView({
                 }}
                 className={`px-3 py-2 rounded-lg whitespace-nowrap transition-colors ${
                   index === currentActivityIndex
-                    ? 'bg-blue-500 text-white'
+                    ? isBallet ? 'bg-purple-500 text-white' : 'bg-blue-500 text-white'
                     : isComplete
                       ? 'bg-green-100 text-green-700'
                       : 'bg-gray-100 text-gray-700'
@@ -244,8 +249,54 @@ export function SessionView({
               {currentActivity.name}
             </h2>
 
-            {/* Duration-based tracking */}
-            {(currentActivity.trackingType === 'duration' || currentActivity.trackingType === 'completion') && (
+            {/* Ballet completion tracking (no timer) */}
+            {currentActivity.trackingType === 'completion' && isBallet && (
+              <div className="space-y-4">
+                {/* Routine description */}
+                {currentActivity.description && (
+                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                    <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-2">
+                      Routine / Combination
+                    </h3>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                      {currentActivity.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Per-activity notes */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                    Notes for this exercise
+                  </label>
+                  <textarea
+                    value={activityNotes[currentActivity.id] || currentLog?.notes || ''}
+                    onChange={(e) => setActivityNotes(prev => ({ ...prev, [currentActivity.id]: e.target.value }))}
+                    placeholder="How did it feel? Any corrections from the teacher?"
+                    className="w-full p-3 text-sm border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    rows={2}
+                  />
+                </div>
+
+                {currentLog?.completed ? (
+                  <div className="flex items-center justify-center gap-2 py-3 text-green-600">
+                    <Check className="w-5 h-5" />
+                    <span className="font-medium">Completed</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={markActivityComplete}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+                  >
+                    <Check className="w-5 h-5" />
+                    Mark as Done
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Duration-based tracking (timer) */}
+            {(currentActivity.trackingType === 'duration' || (currentActivity.trackingType === 'completion' && !isBallet)) && (
               <div className="space-y-6">
                 <div className="text-center">
                   <div className="text-5xl font-mono font-bold text-gray-900 mb-4">
@@ -262,8 +313,8 @@ export function SessionView({
                   <button
                     onClick={toggleTimer}
                     className={`flex items-center gap-2 px-6 py-3 rounded-lg text-white transition-colors ${
-                      isTimerRunning 
-                        ? 'bg-yellow-500 hover:bg-yellow-600' 
+                      isTimerRunning
+                        ? 'bg-yellow-500 hover:bg-yellow-600'
                         : 'bg-blue-500 hover:bg-blue-600'
                     }`}
                   >

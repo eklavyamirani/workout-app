@@ -66,6 +66,8 @@ export interface Activity {
   startingWeight?: number;
   // For duration-based
   targetDuration?: number;  // minutes
+  // For ballet - routine/combination description
+  description?: string;
 }
 
 // Default GZCLP Exercise Library
@@ -232,6 +234,8 @@ export interface ActivityLog {
   completed?: boolean;
   // For custom fields
   customValues?: Record<string, string | number | boolean>;
+  // Per-activity notes (e.g., combination details for ballet)
+  notes?: string;
 }
 
 export interface Session {

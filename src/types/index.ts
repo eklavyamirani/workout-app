@@ -53,6 +53,11 @@ export interface CustomField {
   type: 'number' | 'text' | 'duration' | 'checkbox';
 }
 
+export interface BalletMovement {
+  id: string;
+  name: string;
+}
+
 export interface Activity {
   id: string;
   name: string;
@@ -66,8 +71,10 @@ export interface Activity {
   startingWeight?: number;
   // For duration-based
   targetDuration?: number;  // minutes
-  // For ballet - routine/combination description
+  // For ballet routines - notes describing the routine
   description?: string;
+  // For ballet routines - ordered list of movements
+  movements?: BalletMovement[];
 }
 
 // Default GZCLP Exercise Library

@@ -165,7 +165,7 @@ export function SessionView({
               <div>
                 <h1 className="text-xl font-bold text-gray-900">{program.name}</h1>
                 <p className="text-sm text-gray-500">
-                  Activity {currentActivityIndex + 1} of {activities.length}
+                  {isBallet ? 'Routine' : 'Activity'} {currentActivityIndex + 1} of {activities.length}
                 </p>
               </div>
             </div>
@@ -249,14 +249,31 @@ export function SessionView({
               {currentActivity.name}
             </h2>
 
-            {/* Ballet completion tracking (no timer) */}
+            {/* Ballet routine tracking */}
             {currentActivity.trackingType === 'completion' && isBallet && (
               <div className="space-y-4">
-                {/* Routine description */}
+                {/* Movements list */}
+                {currentActivity.movements && currentActivity.movements.length > 0 && (
+                  <div className="rounded-lg border border-gray-200 overflow-hidden">
+                    <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-wide px-4 py-2 bg-purple-50 border-b border-purple-100">
+                      Movements
+                    </h3>
+                    <div className="divide-y divide-gray-100">
+                      {currentActivity.movements.map((mv, idx) => (
+                        <div key={`${mv.id}-${idx}`} className="flex items-center gap-3 px-4 py-2">
+                          <span className="text-xs text-gray-300 w-4 text-right flex-shrink-0">{idx + 1}</span>
+                          <span className="text-sm text-gray-800">{mv.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Routine notes (from setup) */}
                 {currentActivity.description && (
-                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                    <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-2">
-                      Routine / Combination
+                  <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+                    <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-1">
+                      Notes
                     </h3>
                     <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
                       {currentActivity.description}
@@ -264,10 +281,10 @@ export function SessionView({
                   </div>
                 )}
 
-                {/* Per-activity notes */}
+                {/* Per-session notes for this routine */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                    Notes for this exercise
+                    Session notes
                   </label>
                   <textarea
                     value={activityNotes[currentActivity.id] || currentLog?.notes || ''}

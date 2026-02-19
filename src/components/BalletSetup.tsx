@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Check, Plus, X } from 'lucide-react';
+import { ArrowLeft, Check, Plus, X, ChevronUp, ChevronDown, Copy, Search, ChevronRight } from 'lucide-react';
 import type {
   Program,
   Activity,
@@ -8,6 +8,7 @@ import type {
   BalletLevel,
   BalletExercise,
   BalletSection,
+  BalletMovement,
 } from '../types';
 import { getBalletExercisesForClass, DEFAULT_BALLET_EXERCISES } from '../types';
 
@@ -38,99 +39,160 @@ const SECTION_LABELS: Record<BalletSection, string> = {
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-interface ExerciseEntry {
-  exercise: BalletExercise;
-  description: string;
-  enabled: boolean;
+interface RoutineEntry {
+  id: string;
+  name: string;
+  section: BalletSection;
+  notes: string;
+  movements: BalletMovement[];
+  collapsed: boolean;
 }
 
 export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
   const [step, setStep] = useState(1);
   const [classType, setClassType] = useState<BalletClassType | null>(null);
   const [level, setLevel] = useState<BalletLevel | null>(null);
-  const [exercises, setExercises] = useState<ExerciseEntry[]>([]);
+  const [routines, setRoutines] = useState<RoutineEntry[]>([]);
   const [programName, setProgramName] = useState('');
   const [scheduleMode, setScheduleMode] = useState<ScheduleConfig['mode']>('weekly');
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [intervalDays, setIntervalDays] = useState(3);
-  const [showAddExercise, setShowAddExercise] = useState(false);
-  const [addMode, setAddMode] = useState<'library' | 'custom'>('library');
-  const [librarySearch, setLibrarySearch] = useState('');
-  const [customExercises, setCustomExercises] = useState<BalletExercise[]>([]);
-  const [newCustom, setNewCustom] = useState({
-    name: '',
-    section: 'center' as BalletSection,
-    levels: ['beginner', 'intermediate', 'advanced'] as BalletLevel[],
-  });
+
+  // Modal state
+  const [addMovementTarget, setAddMovementTarget] = useState<string | null>(null); // routine id
+  const [movementSearch, setMovementSearch] = useState('');
+  const [showAddRoutine, setShowAddRoutine] = useState(false);
+  const [newRoutineName, setNewRoutineName] = useState('');
+  const [newRoutineSection, setNewRoutineSection] = useState<BalletSection>('barre');
 
   function handleSelectLevel(selectedLevel: BalletLevel) {
     setLevel(selectedLevel);
     const selected = getBalletExercisesForClass(classType!, selectedLevel);
-    setExercises(selected.map(e => ({ exercise: e, description: '', enabled: true })));
 
+    // Group exercises by section to create default routines
+    const sections = new Map<BalletSection, BalletExercise[]>();
+    for (const ex of selected) {
+      const list = sections.get(ex.section) || [];
+      list.push(ex);
+      sections.set(ex.section, list);
+    }
+
+    const defaultRoutines: RoutineEntry[] = [];
+    for (const [section, exercises] of sections) {
+      defaultRoutines.push({
+        id: `routine_${section}_${Date.now()}`,
+        name: SECTION_LABELS[section],
+        section,
+        notes: '',
+        movements: exercises.map(e => ({ id: e.id, name: e.name })),
+        collapsed: false,
+      });
+    }
+
+    setRoutines(defaultRoutines);
     const classLabel = CLASS_TYPES.find(c => c.type === classType)?.label || 'Ballet';
     const levelLabel = LEVELS.find(l => l.level === selectedLevel)?.label || '';
     setProgramName(`${levelLabel} ${classLabel}`);
   }
 
-  function toggleExercise(index: number) {
-    setExercises(prev => prev.map((e, i) => i === index ? { ...e, enabled: !e.enabled } : e));
-  }
-
-  function updateDescription(index: number, description: string) {
-    setExercises(prev => prev.map((e, i) =>
-      i === index ? { ...e, description } : e
-    ));
-  }
-
-  function removeExercise(index: number) {
-    setExercises(prev => prev.filter((_, i) => i !== index));
-  }
-
-  function addExercise(exercise: BalletExercise) {
-    setExercises(prev => [...prev, { exercise, description: '', enabled: true }]);
-    setShowAddExercise(false);
-    setLibrarySearch('');
-    setAddMode('library');
-  }
-
-  function addCustomExercise() {
-    if (!newCustom.name.trim()) return;
-    const id = `custom_${newCustom.name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
-    const exercise: BalletExercise = {
-      id,
-      name: newCustom.name.trim(),
-      section: newCustom.section,
-      defaultDuration: 0,
-      levels: newCustom.levels,
+  // --- Routine operations ---
+  function addRoutine() {
+    if (!newRoutineName.trim()) return;
+    const routine: RoutineEntry = {
+      id: `routine_${Date.now()}`,
+      name: newRoutineName.trim(),
+      section: newRoutineSection,
+      notes: '',
+      movements: [],
+      collapsed: false,
     };
-    setCustomExercises(prev => [...prev, exercise]);
-    setExercises(prev => [...prev, { exercise, description: '', enabled: true }]);
-    setNewCustom({ name: '', section: 'center', levels: ['beginner', 'intermediate', 'advanced'] });
-    setShowAddExercise(false);
-    setAddMode('library');
+    setRoutines(prev => [...prev, routine]);
+    setNewRoutineName('');
+    setShowAddRoutine(false);
   }
 
-  function toggleCustomLevel(lvl: BalletLevel) {
-    setNewCustom(prev => ({
-      ...prev,
-      levels: prev.levels.includes(lvl)
-        ? prev.levels.filter(l => l !== lvl)
-        : [...prev.levels, lvl],
+  function removeRoutine(routineId: string) {
+    setRoutines(prev => prev.filter(r => r.id !== routineId));
+  }
+
+  function updateRoutineName(routineId: string, name: string) {
+    setRoutines(prev => prev.map(r => r.id === routineId ? { ...r, name } : r));
+  }
+
+  function updateRoutineNotes(routineId: string, notes: string) {
+    setRoutines(prev => prev.map(r => r.id === routineId ? { ...r, notes } : r));
+  }
+
+  function toggleRoutineCollapse(routineId: string) {
+    setRoutines(prev => prev.map(r => r.id === routineId ? { ...r, collapsed: !r.collapsed } : r));
+  }
+
+  function moveRoutine(routineId: string, direction: 'up' | 'down') {
+    setRoutines(prev => {
+      const idx = prev.findIndex(r => r.id === routineId);
+      if (idx < 0) return prev;
+      const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const copy = [...prev];
+      [copy[idx], copy[newIdx]] = [copy[newIdx], copy[idx]];
+      return copy;
+    });
+  }
+
+  // --- Movement operations within a routine ---
+  function addMovement(routineId: string, exercise: BalletExercise) {
+    setRoutines(prev => prev.map(r => {
+      if (r.id !== routineId) return r;
+      return {
+        ...r,
+        movements: [...r.movements, { id: exercise.id, name: exercise.name }],
+      };
+    }));
+    setAddMovementTarget(null);
+    setMovementSearch('');
+  }
+
+  function removeMovement(routineId: string, movementIndex: number) {
+    setRoutines(prev => prev.map(r => {
+      if (r.id !== routineId) return r;
+      return {
+        ...r,
+        movements: r.movements.filter((_, i) => i !== movementIndex),
+      };
     }));
   }
 
+  function duplicateMovement(routineId: string, movementIndex: number) {
+    setRoutines(prev => prev.map(r => {
+      if (r.id !== routineId) return r;
+      const movements = [...r.movements];
+      const dup = { ...movements[movementIndex] };
+      movements.splice(movementIndex + 1, 0, dup);
+      return { ...r, movements };
+    }));
+  }
+
+  function moveMovement(routineId: string, movementIndex: number, direction: 'up' | 'down') {
+    setRoutines(prev => prev.map(r => {
+      if (r.id !== routineId) return r;
+      const newIdx = direction === 'up' ? movementIndex - 1 : movementIndex + 1;
+      if (newIdx < 0 || newIdx >= r.movements.length) return r;
+      const movements = [...r.movements];
+      [movements[movementIndex], movements[newIdx]] = [movements[newIdx], movements[movementIndex]];
+      return { ...r, movements };
+    }));
+  }
+
+  // --- Schedule ---
   function toggleDay(day: number) {
     setDaysOfWeek(prev =>
-      prev.includes(day)
-        ? prev.filter(d => d !== day)
-        : [...prev, day].sort()
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
     );
   }
 
+  // --- Complete ---
   function handleComplete() {
     const programId = `program_${Date.now()}`;
-    const enabledExercises = exercises.filter(e => e.enabled);
 
     const program: Program = {
       id: programId,
@@ -145,42 +207,31 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
       createdAt: new Date().toISOString(),
     };
 
-    const programActivities: Activity[] = enabledExercises.map(e => ({
-      id: `${programId}_${e.exercise.id}`,
-      name: e.exercise.name,
+    const programActivities: Activity[] = routines.map(r => ({
+      id: `${programId}_${r.id}`,
+      name: r.name,
       programId,
       trackingType: 'completion' as const,
-      description: e.description || undefined,
+      description: r.notes || undefined,
+      movements: r.movements,
     }));
 
     onComplete(program, programActivities);
   }
 
-  const enabledCount = exercises.filter(e => e.enabled).length;
-  const canProceedStep3 = enabledCount > 0;
+  const totalMovements = routines.reduce((sum, r) => sum + r.movements.length, 0);
+  const canProceedStep3 = routines.length > 0 && totalMovements > 0;
   const canProceedStep4 = scheduleMode === 'flexible' ||
     (scheduleMode === 'weekly' && daysOfWeek.length > 0) ||
     (scheduleMode === 'interval' && intervalDays > 0);
 
-  // Available exercises not already in the list (presets + previously created customs)
-  const allKnownExercises = [...DEFAULT_BALLET_EXERCISES, ...customExercises];
-  const availableToAdd = allKnownExercises.filter(
-    e => !exercises.some(ex => ex.exercise.id === e.id)
-  );
-  const filteredLibrary = librarySearch.trim()
-    ? availableToAdd.filter(e =>
-        e.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
-        e.section.toLowerCase().includes(librarySearch.toLowerCase())
+  // Filtered library for add-movement modal
+  const filteredLibrary = movementSearch.trim()
+    ? DEFAULT_BALLET_EXERCISES.filter(e =>
+        e.name.toLowerCase().includes(movementSearch.toLowerCase()) ||
+        e.section.toLowerCase().includes(movementSearch.toLowerCase())
       )
-    : availableToAdd;
-
-  // Group exercises by section for display
-  const sections = exercises.reduce<Record<string, ExerciseEntry[]>>((acc, entry) => {
-    const section = entry.exercise.section;
-    if (!acc[section]) acc[section] = [];
-    acc[section].push(entry);
-    return acc;
-  }, {});
+    : DEFAULT_BALLET_EXERCISES;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -280,22 +331,22 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
           </div>
         )}
 
-        {/* Step 3: Review & Customize Exercises */}
+        {/* Step 3: Build Routines */}
         {step === 3 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Review your class</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Build your routines</h2>
                 <p className="text-sm text-gray-500">
-                  {enabledCount} exercises
+                  {routines.length} routine{routines.length !== 1 ? 's' : ''} &middot; {totalMovements} movement{totalMovements !== 1 ? 's' : ''}
                 </p>
               </div>
               <button
-                onClick={() => setShowAddExercise(true)}
-                className="flex items-center gap-1 text-sm text-purple-500 hover:text-purple-600"
+                onClick={() => setShowAddRoutine(true)}
+                className="flex items-center gap-1 text-sm text-purple-500 hover:text-purple-600 font-medium"
               >
                 <Plus className="w-4 h-4" />
-                Add
+                Routine
               </button>
             </div>
 
@@ -309,62 +360,142 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
               />
             </div>
 
-            {Object.entries(sections).map(([section, entries]) => (
-              <div key={section} className="space-y-2">
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                  {SECTION_LABELS[section as BalletSection]}
-                </h3>
-                {entries.map((entry) => {
-                  const globalIndex = exercises.indexOf(entry);
-                  return (
-                    <div
-                      key={entry.exercise.id}
-                      className={`p-3 rounded-lg border transition-colors ${
-                        entry.enabled
-                          ? 'bg-white border-gray-200'
-                          : 'bg-gray-50 border-gray-100 opacity-50'
-                      }`}
+            {/* Routines list */}
+            <div className="space-y-3">
+              {routines.map((routine, routineIdx) => (
+                <div key={routine.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  {/* Routine header */}
+                  <div className="flex items-center gap-2 p-3 bg-gray-50 border-b border-gray-100">
+                    <button
+                      onClick={() => toggleRoutineCollapse(routine.id)}
+                      className="p-1 text-gray-400 hover:text-gray-600"
                     >
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => toggleExercise(globalIndex)}
-                          className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                            entry.enabled
-                              ? 'border-purple-500 bg-purple-500'
-                              : 'border-gray-300'
-                          }`}
-                        >
-                          {entry.enabled && <Check className="w-3 h-3 text-white" />}
-                        </button>
+                      <ChevronRight className={`w-4 h-4 transition-transform ${!routine.collapsed ? 'rotate-90' : ''}`} />
+                    </button>
 
-                        <span className="flex-1 font-medium text-gray-900 text-sm">
-                          {entry.exercise.name}
-                        </span>
+                    <input
+                      type="text"
+                      value={routine.name}
+                      onChange={(e) => updateRoutineName(routine.id, e.target.value)}
+                      className="flex-1 text-sm font-semibold bg-transparent border-none focus:outline-none focus:ring-0 text-gray-900"
+                    />
 
-                        <button
-                          onClick={() => removeExercise(globalIndex)}
-                          className="p-1 text-gray-300 hover:text-red-400 rounded"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
+                    <span className="text-xs text-gray-400 px-1">
+                      {routine.movements.length}
+                    </span>
 
-                      {entry.enabled && (
-                        <div className="mt-2 ml-8">
-                          <textarea
-                            value={entry.description}
-                            onChange={(e) => updateDescription(globalIndex, e.target.value)}
-                            placeholder="Describe the routine/combination, e.g., tombé pas de bourrée, step into 4th, retiré, 2 balancés..."
-                            className="w-full p-2 text-sm border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                            rows={2}
-                          />
+                    {/* Routine reorder buttons */}
+                    <button
+                      onClick={() => moveRoutine(routine.id, 'up')}
+                      disabled={routineIdx === 0}
+                      className="p-1 text-gray-300 hover:text-gray-500 disabled:opacity-30"
+                    >
+                      <ChevronUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => moveRoutine(routine.id, 'down')}
+                      disabled={routineIdx === routines.length - 1}
+                      className="p-1 text-gray-300 hover:text-gray-500 disabled:opacity-30"
+                    >
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+
+                    <button
+                      onClick={() => removeRoutine(routine.id)}
+                      className="p-1 text-gray-300 hover:text-red-400"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  {/* Routine content (collapsible) */}
+                  {!routine.collapsed && (
+                    <div className="p-3 space-y-3">
+                      {/* Routine notes */}
+                      <textarea
+                        value={routine.notes}
+                        onChange={(e) => updateRoutineNotes(routine.id, e.target.value)}
+                        placeholder="Notes for this routine..."
+                        className="w-full p-2 text-sm border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        rows={2}
+                      />
+
+                      {/* Movements */}
+                      {routine.movements.length > 0 && (
+                        <div className="space-y-1">
+                          {routine.movements.map((movement, mvIdx) => (
+                            <div
+                              key={`${movement.id}-${mvIdx}`}
+                              className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-gray-50 group"
+                            >
+                              <span className="text-xs text-gray-300 w-4 text-right flex-shrink-0">
+                                {mvIdx + 1}
+                              </span>
+                              <span className="flex-1 text-sm text-gray-800">
+                                {movement.name}
+                              </span>
+
+                              {/* Movement actions */}
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => duplicateMovement(routine.id, mvIdx)}
+                                  className="p-1 text-gray-300 hover:text-purple-500"
+                                  title="Duplicate"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => moveMovement(routine.id, mvIdx, 'up')}
+                                  disabled={mvIdx === 0}
+                                  className="p-1 text-gray-300 hover:text-gray-500 disabled:opacity-30"
+                                  title="Move up"
+                                >
+                                  <ChevronUp className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => moveMovement(routine.id, mvIdx, 'down')}
+                                  disabled={mvIdx === routine.movements.length - 1}
+                                  className="p-1 text-gray-300 hover:text-gray-500 disabled:opacity-30"
+                                  title="Move down"
+                                >
+                                  <ChevronDown className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => removeMovement(routine.id, mvIdx)}
+                                  className="p-1 text-gray-300 hover:text-red-400"
+                                  title="Remove"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
+
+                      {routine.movements.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">No movements yet</p>
+                      )}
+
+                      {/* Add movement button */}
+                      <button
+                        onClick={() => { setAddMovementTarget(routine.id); setMovementSearch(''); }}
+                        className="flex items-center gap-1 text-xs text-purple-500 hover:text-purple-600 font-medium"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add movement
+                      </button>
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {routines.length === 0 && (
+              <div className="text-center py-8 text-gray-400">
+                <p className="text-sm">No routines yet. Add one to get started.</p>
               </div>
-            ))}
+            )}
 
             <div className="flex gap-2">
               <button
@@ -471,144 +602,107 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
           </div>
         )}
 
-        {/* Add Exercise Modal */}
-        {showAddExercise && (
+        {/* Add Movement Modal */}
+        {addMovementTarget && (
           <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
             <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
               <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold">Add Exercise</h3>
-                <button onClick={() => { setShowAddExercise(false); setAddMode('library'); setLibrarySearch(''); }} className="p-1 hover:bg-gray-100 rounded">
+                <h3 className="text-lg font-semibold">Add Movement</h3>
+                <button
+                  onClick={() => { setAddMovementTarget(null); setMovementSearch(''); }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Tabs */}
-              <div className="flex border-b border-gray-200">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={movementSearch}
+                    onChange={(e) => setMovementSearch(e.target.value)}
+                    placeholder="Search movements..."
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-4 space-y-1">
+                {filteredLibrary.map(exercise => (
+                  <button
+                    key={exercise.id}
+                    onClick={() => addMovement(addMovementTarget, exercise)}
+                    className="w-full py-2 px-3 rounded-lg text-left hover:bg-purple-50 transition-colors"
+                  >
+                    <div className="text-sm font-medium text-gray-900">{exercise.name}</div>
+                    <div className="text-xs text-gray-400">{SECTION_LABELS[exercise.section]}</div>
+                  </button>
+                ))}
+                {filteredLibrary.length === 0 && (
+                  <p className="text-center py-6 text-gray-500 text-sm">
+                    No matches for &ldquo;{movementSearch}&rdquo;
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Routine Modal */}
+        {showAddRoutine && (
+          <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+            <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">New Routine</h3>
                 <button
-                  onClick={() => setAddMode('library')}
-                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                    addMode === 'library'
-                      ? 'text-purple-600 border-b-2 border-purple-500'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
+                  onClick={() => { setShowAddRoutine(false); setNewRoutineName(''); }}
+                  className="p-1 hover:bg-gray-100 rounded"
                 >
-                  Library
-                </button>
-                <button
-                  onClick={() => setAddMode('custom')}
-                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                    addMode === 'custom'
-                      ? 'text-purple-600 border-b-2 border-purple-500'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Create Custom
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {addMode === 'library' && (
-                <>
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <input
-                      type="text"
-                      value={librarySearch}
-                      onChange={(e) => setLibrarySearch(e.target.value)}
-                      placeholder="Search movements..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                      autoFocus
-                    />
-                  </div>
-                  <div className="overflow-y-auto flex-1 p-4 space-y-2">
-                    {filteredLibrary.map(exercise => (
-                      <button
-                        key={exercise.id}
-                        onClick={() => addExercise(exercise)}
-                        className="w-full p-3 rounded-lg border border-gray-200 text-left hover:border-purple-300 hover:bg-purple-50 transition-colors"
-                      >
-                        <div className="font-medium text-gray-900">{exercise.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {SECTION_LABELS[exercise.section]}
-                        </div>
-                      </button>
-                    ))}
-                    {filteredLibrary.length === 0 && (
-                      <div className="text-center py-6">
-                        <p className="text-gray-500 text-sm">
-                          {librarySearch ? `No matches for "${librarySearch}"` : 'All exercises already added'}
-                        </p>
-                        <button
-                          onClick={() => setAddMode('custom')}
-                          className="mt-2 text-sm text-purple-500 hover:text-purple-600"
-                        >
-                          Create a custom exercise instead
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={newRoutineName}
+                  onChange={(e) => setNewRoutineName(e.target.value)}
+                  placeholder="e.g., Petit Allegro Combo"
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  autoFocus
+                />
+              </div>
 
-              {addMode === 'custom' && (
-                <div className="overflow-y-auto flex-1 p-4 space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Exercise name</label>
-                    <input
-                      type="text"
-                      value={newCustom.name}
-                      onChange={(e) => setNewCustom({ ...newCustom, name: e.target.value })}
-                      placeholder="e.g., Pas de bourrée en tournant"
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                      autoFocus
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['barre', 'center', 'pointe', 'cooldown'] as BalletSection[]).map(sec => (
-                        <button
-                          key={sec}
-                          onClick={() => setNewCustom({ ...newCustom, section: sec })}
-                          className={`py-2 px-3 rounded-lg text-sm font-medium border-2 transition-colors ${
-                            newCustom.section === sec
-                              ? 'border-purple-500 bg-purple-50 text-purple-700'
-                              : 'border-gray-200 text-gray-700 hover:border-gray-300'
-                          }`}
-                        >
-                          {SECTION_LABELS[sec]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Levels</label>
-                    <div className="flex gap-2">
-                      {(['beginner', 'intermediate', 'advanced'] as BalletLevel[]).map(lvl => (
-                        <button
-                          key={lvl}
-                          onClick={() => toggleCustomLevel(lvl)}
-                          className={`flex-1 py-2 rounded-lg text-sm font-medium border-2 transition-colors ${
-                            newCustom.levels.includes(lvl)
-                              ? 'border-purple-500 bg-purple-50 text-purple-700'
-                              : 'border-gray-200 text-gray-700 hover:border-gray-300'
-                          }`}
-                        >
-                          {lvl.charAt(0).toUpperCase() + lvl.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={addCustomExercise}
-                    disabled={!newCustom.name.trim() || newCustom.levels.length === 0}
-                    className="w-full py-3 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors"
-                  >
-                    Add Exercise
-                  </button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['barre', 'center', 'pointe', 'cooldown'] as BalletSection[]).map(sec => (
+                    <button
+                      key={sec}
+                      onClick={() => setNewRoutineSection(sec)}
+                      className={`py-2 px-3 rounded-lg text-sm font-medium border-2 transition-colors ${
+                        newRoutineSection === sec
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {SECTION_LABELS[sec]}
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
+
+              <button
+                onClick={addRoutine}
+                disabled={!newRoutineName.trim()}
+                className="w-full py-3 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors"
+              >
+                Add Routine
+              </button>
             </div>
           </div>
         )}

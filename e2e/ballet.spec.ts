@@ -712,6 +712,73 @@ test.describe('Exercise Reference Popover', () => {
   });
 });
 
+test.describe('Carry Forward (practiceNext)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+  });
+
+  test('practiceNext notes from completed session appear in next session', async ({ page }) => {
+    // Create a barre-only program (fewer routines = faster completion)
+    await createBalletProgramForToday(page, { classType: 'Barre Only', level: 'Beginner' });
+    await page.getByRole('button', { name: 'Start' }).first().click();
+
+    // Add practiceNext notes
+    const practiceNextTextarea = page.getByPlaceholder(/What do you want to work on next time/);
+    await practiceNextTextarea.fill('Focus on turnout in pliés');
+
+    // Complete all routines
+    const tabs = page.locator('.flex.gap-2.mb-4 button');
+    const tabCount = await tabs.count();
+    for (let i = 0; i < tabCount; i++) {
+      await page.getByRole('button', { name: 'Mark as Done' }).click();
+    }
+
+    // Finish the session
+    await page.getByRole('button', { name: 'Finish' }).click();
+    await expect(page.getByText('Done').first()).toBeVisible();
+
+    // Move the completed session to "yesterday" in localStorage so carry-forward triggers
+    // (carry-forward only fires for sessions with s.date < today)
+    await page.evaluate(() => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // Find the session key for today
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)!;
+        if (key.startsWith(`sessions:${todayStr}:`)) {
+          const session = JSON.parse(localStorage.getItem(key)!);
+          // Update the session date to yesterday
+          session.date = yesterdayStr;
+          // Save with new key, remove old key
+          const newKey = key.replace(`sessions:${todayStr}:`, `sessions:${yesterdayStr}:`);
+          localStorage.setItem(newKey, JSON.stringify(session));
+          localStorage.removeItem(key);
+          break;
+        }
+      }
+    });
+
+    // Reload to pick up the changed localStorage state
+    await page.reload();
+
+    // Now "today" has no completed session, so Start button should appear
+    await page.getByRole('button', { name: 'Start' }).first().click();
+
+    // Should see the "From last class" carry-forward section
+    await expect(page.getByText('From last class')).toBeVisible();
+    await expect(page.getByText('Focus on turnout in pliés')).toBeVisible();
+
+    // Dismiss the carry-forward notes
+    await page.getByLabel('Dismiss last class note').click();
+    await expect(page.getByText('From last class')).not.toBeVisible();
+  });
+});
+
 test.describe('Ballet Program Persistence', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');

@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     test: {
       globals: true,
+      // Current unit tests are pure utility functions (no DOM).
+      // Change to 'jsdom' when adding React component tests.
       environment: 'node',
       exclude: ['e2e/**', 'node_modules/**'],
     },

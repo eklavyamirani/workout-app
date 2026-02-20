@@ -5,6 +5,7 @@ import { BalletGlossary } from './BalletGlossary';
 import { RoutineBuilder } from './RoutineBuilder';
 import { ExerciseReferencePopover } from './ExerciseReferencePopover';
 import { getBaseExerciseId } from '../utils/exerciseId';
+import { logger } from '../utils/logger';
 
 interface SessionViewProps {
   program: Program;
@@ -28,7 +29,10 @@ function activitiesToRoutines(acts: Activity[]): RoutineEntry[] {
   return acts.map(a => ({
     id: a.id,
     name: a.name,
-    section: a.section!,
+    section: a.section ?? (() => {
+      logger.warn('Activity missing section, defaulting to barre', { activityId: a.id, name: a.name });
+      return 'barre' as BalletSection;
+    })(),
     notes: a.description || '',
     movements: a.movements || [],
     collapsed: false,
@@ -583,9 +587,9 @@ export function SessionView({
       {/* Edit Routine Modal */}
       {isEditing && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setIsEditing(false); }}>
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] flex flex-col">
+          <div role="dialog" aria-modal="true" aria-labelledby="edit-routines-title" className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold">Edit Routines</h3>
+              <h3 id="edit-routines-title" className="text-lg font-semibold">Edit Routines</h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsEditing(false)}

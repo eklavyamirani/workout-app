@@ -123,11 +123,13 @@ export default function App() {
       setSessions({ ...sessions, [sessionKey]: session });
     }
 
-    // For ballet programs, find the last completed session's practiceNext notes
+    // For ballet programs, find the last completed session's practiceNext notes.
+    // Query storage directly because in-memory state only holds today-forward sessions.
     let lastPracticeNotes: string | undefined;
     if (program.type === 'ballet') {
+      const allSessions = await sessionStorage.getByDateRange('0000-00-00', date);
       let latestDate = '';
-      for (const s of Object.values(sessions)) {
+      for (const s of allSessions) {
         if (
           s.programId === programId &&
           s.status === 'completed' &&

@@ -120,11 +120,11 @@ export function ExerciseReferencePopover({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
+      <div role="dialog" aria-modal="true" aria-labelledby="ref-popover-title" className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">{exerciseName}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
+          <h3 id="ref-popover-title" className="text-lg font-semibold text-gray-900">{exerciseName}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>

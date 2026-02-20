@@ -259,12 +259,13 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
       {/* Add Movement Modal */}
       {addMovementTarget && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
+          <div role="dialog" aria-modal="true" aria-labelledby="add-movement-title" className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold">Add Movement</h3>
+              <h3 id="add-movement-title" className="text-lg font-semibold">Add Movement</h3>
               <button
                 onClick={() => { setAddMovementTarget(null); setMovementSearch(''); }}
                 className="p-1 hover:bg-gray-100 rounded"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -308,12 +309,13 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
       {/* Add Routine Modal */}
       {showAddRoutine && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-6 space-y-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="add-routine-title" className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">New Routine</h3>
+              <h3 id="add-routine-title" className="text-lg font-semibold">New Routine</h3>
               <button
                 onClick={() => { setShowAddRoutine(false); setNewRoutineName(''); }}
                 className="p-1 hover:bg-gray-100 rounded"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ExternalLink, Search } from 'lucide-react';
 import { BALLET_GLOSSARY } from '../types';
 
@@ -9,6 +9,14 @@ interface BalletGlossaryProps {
 export function BalletGlossary({ onClose }: BalletGlossaryProps) {
   const [search, setSearch] = useState('');
 
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const filtered = search.trim()
     ? BALLET_GLOSSARY.filter(entry =>
         entry.term.toLowerCase().includes(search.toLowerCase()) ||
@@ -18,10 +26,10 @@ export function BalletGlossary({ onClose }: BalletGlossaryProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col">
+      <div role="dialog" aria-modal="true" aria-labelledby="glossary-heading" className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Movement Glossary</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
+          <h2 id="glossary-heading" className="text-lg font-semibold text-gray-900">Movement Glossary</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Close dialog">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -59,7 +67,7 @@ export function BalletGlossary({ onClose }: BalletGlossaryProps) {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-shrink-0 p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
-                  title="Watch video"
+                  aria-label="Watch video tutorial"
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>

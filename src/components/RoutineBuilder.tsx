@@ -8,6 +8,7 @@ import type {
   RoutineEntry,
 } from '../types';
 import { DEFAULT_BALLET_EXERCISES } from '../types';
+import { getBaseExerciseId } from '../utils/exerciseId';
 import { SortableList } from './SortableList';
 import { SortableItem } from './SortableItem';
 import { ExerciseReferencePopover } from './ExerciseReferencePopover';
@@ -92,7 +93,8 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
       if (r.id !== routineId) return r;
       const movements = [...r.movements];
       const original = movements[movementIndex];
-      movements.splice(movementIndex + 1, 0, { ...original, id: `${original.id.split('_')[0]}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` });
+      const baseId = getBaseExerciseId(original.id);
+      movements.splice(movementIndex + 1, 0, { ...original, id: `${baseId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` });
       return { ...r, movements };
     }));
   }
@@ -200,7 +202,7 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
                                   {/* Movement actions - always visible for touch */}
                                   <div className="flex items-center gap-0.5 flex-shrink-0">
                                     <button
-                                      onClick={() => setReferenceTarget({ id: movement.id.replace(/_\d+_[a-z0-9]+$/, ''), name: movement.name })}
+                                      onClick={() => setReferenceTarget({ id: getBaseExerciseId(movement.id), name: movement.name })}
                                       className="p-1 text-gray-300 hover:text-purple-500"
                                       title="Reference"
                                     >

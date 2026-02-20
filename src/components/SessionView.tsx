@@ -4,6 +4,7 @@ import type { Program, Activity, Session, ActivityLog, SetLog, RoutineEntry, Bal
 import { BalletGlossary } from './BalletGlossary';
 import { RoutineBuilder } from './RoutineBuilder';
 import { ExerciseReferencePopover } from './ExerciseReferencePopover';
+import { getBaseExerciseId } from '../utils/exerciseId';
 
 interface SessionViewProps {
   program: Program;
@@ -124,7 +125,7 @@ export function SessionView({
     const updatedActivities = [...session.activities];
     const existingIndex = updatedActivities.findIndex(a => a.activityId === currentActivity.id);
 
-    const activityNote = activityNotes[currentActivity.id];
+    const activityNote = activityNotes[currentActivity.id] ?? currentLog?.notes;
     const log: ActivityLog = {
       activityId: currentActivity.id,
       trackingType: currentActivity.trackingType,
@@ -354,7 +355,7 @@ export function SessionView({
                           <span className="text-xs text-gray-300 w-4 text-right flex-shrink-0">{idx + 1}</span>
                           <span className="flex-1 text-sm text-gray-800">{mv.name}</span>
                           <button
-                            onClick={() => setReferenceTarget({ id: mv.id.replace(/_\d+_[a-z0-9]+$/, ''), name: mv.name })}
+                            onClick={() => setReferenceTarget({ id: getBaseExerciseId(mv.id), name: mv.name })}
                             className="p-1 text-gray-300 hover:text-purple-500 flex-shrink-0"
                             title="Reference"
                           >

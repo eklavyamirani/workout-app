@@ -6,6 +6,11 @@ export default defineConfig(({ mode }) => {
   const port = Number(env.PORT) || 3000
   return {
     plugins: [react()],
+    test: {
+      globals: true,
+      environment: 'node',
+      exclude: ['e2e/**', 'node_modules/**'],
+    },
     server: {
       port,
       host: true,

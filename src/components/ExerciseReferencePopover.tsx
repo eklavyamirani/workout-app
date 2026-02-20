@@ -55,6 +55,12 @@ export function ExerciseReferencePopover({
   }, [onClose]);
 
   async function loadReference() {
+    // Reset all state to prevent cross-exercise data contamination
+    setYoutubeLinks([]);
+    setNote('');
+    setGlossaryOverride(undefined);
+    setDirty(false);
+
     const ref = await referenceStorage.get(exerciseId);
     if (ref) {
       setYoutubeLinks(ref.youtubeLinks || []);

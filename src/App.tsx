@@ -126,15 +126,17 @@ export default function App() {
     // For ballet programs, find the last completed session's practiceNext notes
     let lastPracticeNotes: string | undefined;
     if (program.type === 'ballet') {
-      const allKeys = await storage.list(`sessions:`);
       let latestDate = '';
-      for (const key of allKeys) {
-        const s = await storage.get<Session>(key);
-        if (s && s.programId === programId && s.status === 'completed' && s.practiceNext && s.date < date) {
-          if (s.date > latestDate) {
-            latestDate = s.date;
-            lastPracticeNotes = s.practiceNext;
-          }
+      for (const s of Object.values(sessions)) {
+        if (
+          s.programId === programId &&
+          s.status === 'completed' &&
+          s.practiceNext &&
+          s.date < date &&
+          s.date > latestDate
+        ) {
+          latestDate = s.date;
+          lastPracticeNotes = s.practiceNext;
         }
       }
     }

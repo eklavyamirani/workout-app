@@ -62,6 +62,12 @@ export function ExerciseReferencePopover({
   function addYoutubeLink() {
     const url = newLink.trim();
     if (!url) return;
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return;
+    } catch {
+      return;
+    }
     setYoutubeLinks(prev => [...prev, url]);
     setNewLink('');
     setDirty(true);

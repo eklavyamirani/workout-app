@@ -74,7 +74,7 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
   function addMovement(routineId: string, exercise: BalletExercise) {
     onRoutinesChange(routines.map(r => {
       if (r.id !== routineId) return r;
-      return { ...r, movements: [...r.movements, { id: exercise.id, name: exercise.name }] };
+      return { ...r, movements: [...r.movements, { id: `${exercise.id}_${Date.now()}`, name: exercise.name }] };
     }));
     setAddMovementTarget(null);
     setMovementSearch('');
@@ -91,7 +91,8 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
     onRoutinesChange(routines.map(r => {
       if (r.id !== routineId) return r;
       const movements = [...r.movements];
-      movements.splice(movementIndex + 1, 0, { ...movements[movementIndex] });
+      const original = movements[movementIndex];
+      movements.splice(movementIndex + 1, 0, { ...original, id: `${original.id.split('_')[0]}_${Date.now()}` });
       return { ...r, movements };
     }));
   }
@@ -130,7 +131,7 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
       <SortableList items={routineIds} onReorder={handleReorderRoutines}>
         <div className="space-y-3">
           {routines.map((routine) => {
-            const movementIds = routine.movements.map((_, i) => `${routine.id}-mv-${i}`);
+            const movementIds = routine.movements.map((movement) => movement.id);
 
             return (
               <SortableItem key={routine.id} id={routine.id}>
@@ -184,8 +185,8 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
                           <div className="space-y-1">
                             {routine.movements.map((movement, mvIdx) => (
                               <SortableItem
-                                key={`${routine.id}-mv-${mvIdx}`}
-                                id={`${routine.id}-mv-${mvIdx}`}
+                                key={movement.id}
+                                id={movement.id}
                                 handleSize="sm"
                               >
                                 <div className="flex items-center gap-2 py-1 px-1 rounded-md hover:bg-gray-50">
@@ -199,7 +200,7 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
                                   {/* Movement actions - always visible for touch */}
                                   <div className="flex items-center gap-0.5 flex-shrink-0">
                                     <button
-                                      onClick={() => setReferenceTarget({ id: movement.id, name: movement.name })}
+                                      onClick={() => setReferenceTarget({ id: movement.id.replace(/_\d+$/, ''), name: movement.name })}
                                       className="p-1 text-gray-300 hover:text-purple-500"
                                       title="Reference"
                                     >

@@ -23,7 +23,7 @@ export function SortableItem({ id, children, handleSize = 'md' }: SortableItemPr
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 10 : 'auto' as unknown as number,
+    zIndex: isDragging ? 10 : 'auto',
     position: 'relative' as const,
   };
 

@@ -117,7 +117,7 @@ export function SessionView({
     const log: ActivityLog = {
       activityId: currentActivity.id,
       trackingType: currentActivity.trackingType,
-      ...(currentActivity.trackingType === 'completion'
+      ...(currentActivity.trackingType === 'completion' && isBallet
         ? {}
         : { duration: Math.floor(timerSeconds / 60) }),
       completed: true,
@@ -271,6 +271,7 @@ export function SessionView({
               <button
                 onClick={() => setDismissedCarryForward(true)}
                 className="text-purple-400 hover:text-purple-600 text-lg leading-none p-1"
+                aria-label="Dismiss last class note"
               >
                 &times;
               </button>
@@ -342,7 +343,7 @@ export function SessionView({
                           <span className="text-xs text-gray-300 w-4 text-right flex-shrink-0">{idx + 1}</span>
                           <span className="flex-1 text-sm text-gray-800">{mv.name}</span>
                           <button
-                            onClick={() => setReferenceTarget({ id: mv.id, name: mv.name })}
+                            onClick={() => setReferenceTarget({ id: mv.id.replace(/_\d+$/, ''), name: mv.name })}
                             className="p-1 text-gray-300 hover:text-purple-500 flex-shrink-0"
                             title="Reference"
                           >
@@ -372,7 +373,7 @@ export function SessionView({
                     Session notes
                   </label>
                   <textarea
-                    value={activityNotes[currentActivity.id] || currentLog?.notes || ''}
+                    value={activityNotes[currentActivity.id] ?? currentLog?.notes ?? ''}
                     onChange={(e) => setActivityNotes(prev => ({ ...prev, [currentActivity.id]: e.target.value }))}
                     placeholder="How did it feel? Any corrections from the teacher?"
                     className="w-full p-3 text-sm border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"

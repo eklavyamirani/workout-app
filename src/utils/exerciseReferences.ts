@@ -5,7 +5,7 @@ function normalize(s: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/['']/g, '')
+    .replace(/['\u2019]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

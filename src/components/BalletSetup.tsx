@@ -68,7 +68,7 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
         name: SECTION_LABELS[section],
         section,
         notes: '',
-        movements: exercises.map(e => ({ id: e.id, name: e.name })),
+        movements: exercises.map((e, i) => ({ id: `${e.id}_${Date.now() + i}`, name: e.name })),
         collapsed: false,
       });
     }

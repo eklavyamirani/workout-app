@@ -38,7 +38,7 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
   function addRoutine() {
     if (!newRoutineName.trim()) return;
     const routine: RoutineEntry = {
-      id: `routine_${Date.now()}`,
+      id: `routine_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: newRoutineName.trim(),
       section: newRoutineSection,
       notes: '',
@@ -74,7 +74,7 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
   function addMovement(routineId: string, exercise: BalletExercise) {
     onRoutinesChange(routines.map(r => {
       if (r.id !== routineId) return r;
-      return { ...r, movements: [...r.movements, { id: `${exercise.id}_${Date.now()}`, name: exercise.name }] };
+      return { ...r, movements: [...r.movements, { id: `${exercise.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, name: exercise.name }] };
     }));
     setAddMovementTarget(null);
     setMovementSearch('');
@@ -92,7 +92,7 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
       if (r.id !== routineId) return r;
       const movements = [...r.movements];
       const original = movements[movementIndex];
-      movements.splice(movementIndex + 1, 0, { ...original, id: `${original.id.split('_')[0]}_${Date.now()}` });
+      movements.splice(movementIndex + 1, 0, { ...original, id: `${original.id.split('_')[0]}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` });
       return { ...r, movements };
     }));
   }
@@ -200,7 +200,7 @@ export function RoutineBuilder({ routines, onRoutinesChange, compact }: RoutineB
                                   {/* Movement actions - always visible for touch */}
                                   <div className="flex items-center gap-0.5 flex-shrink-0">
                                     <button
-                                      onClick={() => setReferenceTarget({ id: movement.id.replace(/_\d+$/, ''), name: movement.name })}
+                                      onClick={() => setReferenceTarget({ id: movement.id.replace(/_\d+_[a-z0-9]+$/, ''), name: movement.name })}
                                       className="p-1 text-gray-300 hover:text-purple-500"
                                       title="Reference"
                                     >

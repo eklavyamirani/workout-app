@@ -398,6 +398,28 @@ test.describe('Ballet Session', () => {
     await expect(practiceNextTextarea).toHaveValue('Work on spotting for pirouettes');
   });
 
+  test('practiceNext notes are saved when session is completed', async ({ page }) => {
+    await createBalletProgramForToday(page, { classType: 'Barre Only', level: 'Beginner' });
+    await page.getByRole('button', { name: 'Start' }).first().click();
+
+    // Fill practice-next notes
+    const practiceNextTextarea = page.getByPlaceholder(/What do you want to work on next time/);
+    await practiceNextTextarea.fill('Work on spotting for pirouettes');
+
+    // Complete all routines
+    const tabs = page.locator('.flex.gap-2.mb-4 button');
+    const tabCount = await tabs.count();
+    for (let i = 0; i < tabCount; i++) {
+      await page.getByRole('button', { name: 'Mark as Done' }).click();
+    }
+
+    // Finish the session
+    await page.getByRole('button', { name: 'Finish' }).click();
+
+    // Session should be marked as Done
+    await expect(page.getByText('Done').first()).toBeVisible();
+  });
+
   test('can navigate between routines via tabs', async ({ page }) => {
     await createBalletProgramForToday(page);
     await page.getByRole('button', { name: 'Start' }).first().click();

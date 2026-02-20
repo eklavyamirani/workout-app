@@ -64,11 +64,11 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
     const defaultRoutines: RoutineEntry[] = [];
     for (const [section, exercises] of sections) {
       defaultRoutines.push({
-        id: `routine_${section}_${Date.now()}`,
+        id: `routine_${section}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         name: SECTION_LABELS[section],
         section,
         notes: '',
-        movements: exercises.map((e, i) => ({ id: `${e.id}_${Date.now() + i}`, name: e.name })),
+        movements: exercises.map((e) => ({ id: `${e.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, name: e.name })),
         collapsed: false,
       });
     }
@@ -86,7 +86,7 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
   }
 
   function handleComplete() {
-    const programId = `program_${Date.now()}`;
+    const programId = `program_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     const program: Program = {
       id: programId,
@@ -108,6 +108,7 @@ export function BalletSetup({ onComplete, onCancel }: BalletSetupProps) {
       trackingType: 'completion' as const,
       description: r.notes || undefined,
       movements: r.movements,
+      section: r.section,
     }));
 
     onComplete(program, programActivities);

@@ -75,6 +75,8 @@ export interface Activity {
   description?: string;
   // For ballet routines - ordered list of movements
   movements?: BalletMovement[];
+  // For ballet routines - which section this routine belongs to
+  section?: BalletSection;
 }
 
 // Default GZCLP Exercise Library

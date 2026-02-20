@@ -27,7 +27,7 @@ function activitiesToRoutines(acts: Activity[]): RoutineEntry[] {
   return acts.map(a => ({
     id: a.id,
     name: a.name,
-    section: 'barre' as BalletSection,
+    section: a.section!,
     notes: a.description || '',
     movements: a.movements || [],
     collapsed: false,
@@ -35,7 +35,7 @@ function activitiesToRoutines(acts: Activity[]): RoutineEntry[] {
 }
 
 // Convert RoutineEntry[] back to Activity[], preserving existing fields
-function routinesToActivities(routines: RoutineEntry[], existingActivities: Activity[]): Activity[] {
+function routinesToActivities(routines: RoutineEntry[], existingActivities: Activity[], programId: string): Activity[] {
   return routines.map(r => {
     const existing = existingActivities.find(a => a.id === r.id);
     if (existing) {
@@ -44,16 +44,18 @@ function routinesToActivities(routines: RoutineEntry[], existingActivities: Acti
         name: r.name,
         description: r.notes || undefined,
         movements: r.movements,
+        section: r.section,
       };
     }
     // New routine added during session editing
     return {
       id: r.id,
       name: r.name,
-      programId: existingActivities[0]?.programId || '',
+      programId,
       trackingType: 'completion' as const,
       description: r.notes || undefined,
       movements: r.movements,
+      section: r.section,
     };
   });
 }
@@ -86,6 +88,15 @@ export function SessionView({
   // In-session editing
   const [isEditing, setIsEditing] = useState(false);
   const [editRoutines, setEditRoutines] = useState<RoutineEntry[]>([]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setIsEditing(false);
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing]);
 
   // Exercise reference popover
   const [referenceTarget, setReferenceTarget] = useState<{ id: string; name: string } | null>(null);
@@ -199,7 +210,7 @@ export function SessionView({
 
   function handleSaveEdits() {
     if (onUpdateActivities) {
-      const updated = routinesToActivities(editRoutines, activities);
+      const updated = routinesToActivities(editRoutines, activities, program.id);
       onUpdateActivities(updated);
 
       // If current activity was removed, reset to first
@@ -343,7 +354,7 @@ export function SessionView({
                           <span className="text-xs text-gray-300 w-4 text-right flex-shrink-0">{idx + 1}</span>
                           <span className="flex-1 text-sm text-gray-800">{mv.name}</span>
                           <button
-                            onClick={() => setReferenceTarget({ id: mv.id.replace(/_\d+$/, ''), name: mv.name })}
+                            onClick={() => setReferenceTarget({ id: mv.id.replace(/_\d+_[a-z0-9]+$/, ''), name: mv.name })}
                             className="p-1 text-gray-300 hover:text-purple-500 flex-shrink-0"
                             title="Reference"
                           >
@@ -570,7 +581,7 @@ export function SessionView({
 
       {/* Edit Routine Modal */}
       {isEditing && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setIsEditing(false); }}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold">Edit Routines</h3>

@@ -19,7 +19,10 @@ const glossaryMap = new Map<string, GlossaryEntry>();
 for (const entry of BALLET_GLOSSARY) {
   const norm = normalize(entry.term);
   glossaryMap.set(norm, entry);
-  glossaryMap.set(stripTrailingS(norm), entry);
+  const stripped = stripTrailingS(norm);
+  if (!glossaryMap.has(stripped)) {
+    glossaryMap.set(stripped, entry);
+  }
 }
 
 // Also build by exercise ID -> exercise name for matching
@@ -53,10 +56,16 @@ export function getGlossaryMatch(exerciseId: string, exerciseName?: string): Glo
     return glossaryMap.get(firstWord)!;
   }
 
-  // Substring match: find glossary entry whose normalized term is contained in the exercise name
+  // Substring match: find the longest (most specific) glossary entry contained in the exercise name
+  let bestMatch: GlossaryEntry | null = null;
+  let bestLength = 0;
   for (const [key, entry] of glossaryMap) {
-    if (key.length > 3 && norm.includes(key)) return entry;
+    if (key.length > 3 && norm.includes(key) && key.length > bestLength) {
+      bestMatch = entry;
+      bestLength = key.length;
+    }
   }
+  if (bestMatch) return bestMatch;
 
   return null;
 }

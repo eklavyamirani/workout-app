@@ -9,6 +9,9 @@ const YOUTUBE_HOSTS = new Set([
   'www.youtube.com', 'youtube.com', 'youtu.be', 'm.youtube.com',
 ]);
 
+// Validates that a URL points to a YouTube domain. Guards against XSS
+// (javascript: URIs, data: URIs) — not URL quality. Bare YouTube domain
+// URLs without a video ID are allowed as they are safe navigation links.
 function isValidYouTubeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -41,7 +44,15 @@ export function ExerciseReferencePopover({
 
   useEffect(() => {
     loadReference();
-  }, [exerciseId]);
+  }, [exerciseId, exerciseName]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   async function loadReference() {
     const ref = await referenceStorage.get(exerciseId);
@@ -102,7 +113,7 @@ export function ExerciseReferencePopover({
     : BALLET_GLOSSARY;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">

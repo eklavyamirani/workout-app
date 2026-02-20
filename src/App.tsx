@@ -4,11 +4,12 @@ import { storage, programStorage, activityStorage, sessionStorage } from './stor
 import { ProgramList } from './components/ProgramList';
 import { CreateProgram } from './components/CreateProgram';
 import { GZCLPSetup } from './components/GZCLPSetup';
+import { BalletSetup } from './components/BalletSetup';
 import { RollingCalendar } from './components/RollingCalendar';
 import { SessionView } from './components/SessionView';
 import type { Program, Activity, Session, GZCLPWorkoutDay } from './types';
 
-type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'session';
+type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'ballet-setup' | 'session';
 
 export default function App() {
   const [view, setView] = useState<ViewType>('loading');
@@ -19,6 +20,7 @@ export default function App() {
     program: Program;
     activities: Activity[];
     session: Session;
+    lastPracticeNotes?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -106,7 +108,7 @@ export default function App() {
 
     const programActivities = activities[programId] || [];
     const sessionKey = `${date}:${programId}`;
-    
+
     let session = sessions[sessionKey];
     if (!session) {
       session = {
@@ -121,10 +123,31 @@ export default function App() {
       setSessions({ ...sessions, [sessionKey]: session });
     }
 
+    // For ballet programs, find the last completed session's practiceNext notes.
+    // Query storage directly because in-memory state only holds today-forward sessions.
+    let lastPracticeNotes: string | undefined;
+    if (program.type === 'ballet') {
+      const allSessions = await sessionStorage.getByDateRange('0000-00-00', date);
+      let latestDate = '';
+      for (const s of allSessions) {
+        if (
+          s.programId === programId &&
+          s.status === 'completed' &&
+          s.practiceNext &&
+          s.date < date &&
+          s.date > latestDate
+        ) {
+          latestDate = s.date;
+          lastPracticeNotes = s.practiceNext;
+        }
+      }
+    }
+
     setCurrentSession({
       program,
       activities: programActivities,
       session,
+      lastPracticeNotes,
     });
     setView('session');
   }
@@ -154,6 +177,16 @@ export default function App() {
     }
   }
 
+  async function handleUpdateActivities(programId: string, updatedActivities: Activity[]) {
+    await activityStorage.saveAll(programId, updatedActivities);
+    setActivities({ ...activities, [programId]: updatedActivities });
+
+    // Also update currentSession if it's for the same program
+    if (currentSession && currentSession.program.id === programId) {
+      setCurrentSession({ ...currentSession, activities: updatedActivities });
+    }
+  }
+
   async function handleCompleteSession(session: Session) {
     await sessionStorage.save(session);
     const sessionKey = `${session.date}:${session.programId}`;
@@ -179,6 +212,7 @@ export default function App() {
         onComplete={handleCreateProgram}
         onCancel={() => setView('home')}
         onSelectGZCLP={() => setView('gzclp-setup')}
+        onSelectBallet={() => setView('ballet-setup')}
       />
     );
   }
@@ -192,14 +226,27 @@ export default function App() {
     );
   }
 
+  if (view === 'ballet-setup') {
+    return (
+      <BalletSetup
+        onComplete={handleCreateProgram}
+        onCancel={() => setView('home')}
+      />
+    );
+  }
+
   if (view === 'session' && currentSession) {
     return (
       <SessionView
         program={currentSession.program}
         activities={currentSession.activities}
         session={currentSession.session}
+        lastPracticeNotes={currentSession.lastPracticeNotes}
         onUpdateSession={handleUpdateSession}
         onComplete={handleCompleteSession}
+        onUpdateActivities={(updatedActivities) =>
+          handleUpdateActivities(currentSession.program.id, updatedActivities)
+        }
         onCancel={() => {
           setCurrentSession(null);
           setView('home');

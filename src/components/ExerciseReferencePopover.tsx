@@ -5,6 +5,20 @@ import { BALLET_GLOSSARY } from '../types';
 import { referenceStorage } from '../storage/adapter';
 import { getGlossaryMatch } from '../utils/exerciseReferences';
 
+const YOUTUBE_HOSTS = new Set([
+  'www.youtube.com', 'youtube.com', 'youtu.be', 'm.youtube.com',
+]);
+
+function isValidYouTubeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      YOUTUBE_HOSTS.has(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 interface ExerciseReferencePopoverProps {
   exerciseId: string;
   exerciseName: string;
@@ -61,13 +75,7 @@ export function ExerciseReferencePopover({
 
   function addYoutubeLink() {
     const url = newLink.trim();
-    if (!url) return;
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return;
-    } catch {
-      return;
-    }
+    if (!url || !isValidYouTubeUrl(url)) return;
     setYoutubeLinks(prev => [...prev, url]);
     setNewLink('');
     setDirty(true);
@@ -176,7 +184,7 @@ export function ExerciseReferencePopover({
                 {youtubeLinks.map((link, idx) => (
                   <div key={idx} className="flex items-center gap-2">
                     <a
-                      href={link}
+                      href={isValidYouTubeUrl(link) ? link : '#'}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 text-xs text-purple-600 hover:text-purple-700 truncate"

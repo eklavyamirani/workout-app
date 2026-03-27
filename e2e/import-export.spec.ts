@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterAnonymousMode } from './helpers';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -7,6 +8,7 @@ test.describe('Import/Export', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can export a program', async ({ page }) => {

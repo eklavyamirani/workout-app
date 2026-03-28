@@ -1,5 +1,7 @@
 import type { Program, Activity, Session, ExerciseReference } from '../types';
 import { localGet, localSet, localDelete, localList, localClear } from './local';
+import { isAuthenticated } from './auth';
+import { markDirty, scheduleSyncPush } from './sync';
 
 // Storage key patterns:
 // - programs:list -> string[] (array of program IDs)
@@ -13,11 +15,21 @@ export const storage = {
   },
 
   async set(key: string, value: unknown): Promise<boolean> {
-    return localSet(key, value);
+    const result = localSet(key, value);
+    if (result && isAuthenticated()) {
+      markDirty(key);
+      scheduleSyncPush();
+    }
+    return result;
   },
 
   async delete(key: string): Promise<boolean> {
-    return localDelete(key);
+    const result = localDelete(key);
+    if (result && isAuthenticated()) {
+      markDirty(key, true);
+      scheduleSyncPush();
+    }
+    return result;
   },
 
   async list(prefix: string = ''): Promise<string[]> {

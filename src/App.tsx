@@ -3,6 +3,7 @@ import { Dumbbell, Plus, Calendar, LogOut, LogIn } from 'lucide-react';
 import { storage, programStorage, activityStorage, sessionStorage } from './storage/adapter';
 import { isAuthenticated, isAnonymous, getEmailFromToken } from './storage/auth';
 import { logout, isOidcConfigured, login } from './storage/oidc';
+import { syncPull, initSyncListeners } from './storage/sync';
 import { ProgramList } from './components/ProgramList';
 import { CreateProgram } from './components/CreateProgram';
 import { GZCLPSetup } from './components/GZCLPSetup';
@@ -27,6 +28,18 @@ export default function App() {
 
   useEffect(() => {
     loadData();
+    initSyncListeners();
+
+    // Refresh data when sync pulls new changes
+    const onSyncUpdate = () => loadData();
+    window.addEventListener('sync:updated', onSyncUpdate);
+
+    // Initial pull if authenticated
+    if (isAuthenticated()) {
+      syncPull().catch(console.error);
+    }
+
+    return () => window.removeEventListener('sync:updated', onSyncUpdate);
   }, []);
 
   async function loadData() {

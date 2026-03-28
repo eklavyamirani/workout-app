@@ -4,6 +4,8 @@ import { storage, programStorage, activityStorage, sessionStorage } from './stor
 import { isAuthenticated, isAnonymous, getEmailFromToken } from './storage/auth';
 import { logout, isOidcConfigured, login } from './storage/oidc';
 import { syncPull, initSyncListeners } from './storage/sync';
+import { SyncStatus } from './components/SyncStatus';
+import { Toast } from './components/Toast';
 import { ProgramList } from './components/ProgramList';
 import { CreateProgram } from './components/CreateProgram';
 import { GZCLPSetup } from './components/GZCLPSetup';
@@ -305,6 +307,7 @@ export default function App() {
 
               {isAuthenticated() && (
                 <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+                  <SyncStatus />
                   <span className="text-xs text-gray-500 hidden sm:inline">{getEmailFromToken()}</span>
                   <button
                     onClick={logout}
@@ -369,6 +372,7 @@ export default function App() {
           />
         )}
       </div>
+      <Toast />
     </div>
   );
 }

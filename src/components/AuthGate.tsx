@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Dumbbell } from 'lucide-react';
-import { getAuthMode, isAuthenticated, enterAnonymousMode } from '../storage/auth';
+import { getAuthMode, isAuthenticated, isAnonymous, enterAnonymousMode } from '../storage/auth';
 import { login, handleCallback, isOidcConfigured, isTokenExpired } from '../storage/oidc';
+import { performInitialSync, syncPull } from '../storage/sync';
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -20,7 +21,17 @@ export function AuthGate({ children }: AuthGateProps) {
 
       if (code && callbackState) {
         try {
+          // Check mode BEFORE handleCallback changes it to authenticated
+          const wasAnonymous = isAnonymous();
           await handleCallback(code, callbackState);
+
+          // Migrate local data or pull existing data
+          if (wasAnonymous) {
+            await performInitialSync();
+          } else {
+            await syncPull();
+          }
+
           setState('app');
           return;
         } catch (err) {

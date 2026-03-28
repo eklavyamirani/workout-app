@@ -16,15 +16,35 @@ builder.Services.AddSingleton(db);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = builder.Configuration["Auth:Issuer"];
-        options.Audience = builder.Configuration["Auth:ClientId"];
-        options.TokenValidationParameters = new TokenValidationParameters
+        var metadataAddress = builder.Configuration["Auth:MetadataAddress"];
+        if (!string.IsNullOrEmpty(metadataAddress))
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            NameClaimType = "email"
-        };
+            // Use separate internal URL for JWKS/metadata fetching (docker networking)
+            // while validating the external issuer URL that appears in tokens
+            options.MetadataAddress = metadataAddress;
+            options.Authority = null;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = builder.Configuration["Auth:Issuer"],
+                ValidateAudience = true,
+                ValidAudience = builder.Configuration["Auth:ClientId"],
+                ValidateLifetime = true,
+                NameClaimType = "email"
+            };
+        }
+        else
+        {
+            options.Authority = builder.Configuration["Auth:Issuer"];
+            options.Audience = builder.Configuration["Auth:ClientId"];
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                NameClaimType = "email"
+            };
+        }
     });
 
 builder.Services.AddAuthorization();

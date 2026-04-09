@@ -35,15 +35,35 @@ if [ "$EXISTING" != "0" ]; then
   exit 0
 fi
 
-# Find the default authorization flow
+# Find the default authorization flow (need pk UUID, not slug)
 echo "Finding default authorization flow..."
-FLOW_SLUG=$(curl -sf -H "${AUTH_HEADER}" "${API}/flows/instances/?designation=authorization" | python3 -c "import sys,json; results=json.load(sys.stdin)['results']; print(results[0]['slug'] if results else '')" 2>/dev/null)
+FLOW_PK=$(curl -sf -H "${AUTH_HEADER}" "${API}/flows/instances/?designation=authorization" | python3 -c "import sys,json; results=json.load(sys.stdin)['results']; print(results[0]['pk'] if results else '')" 2>/dev/null)
 
-if [ -z "$FLOW_SLUG" ]; then
-  echo "ERROR: No authorization flow found. Using 'default-provider-authorization-implicit-consent'."
-  FLOW_SLUG="default-provider-authorization-implicit-consent"
+if [ -z "$FLOW_PK" ]; then
+  echo "ERROR: No authorization flow found."
+  exit 1
 fi
-echo "Using authorization flow: ${FLOW_SLUG}"
+echo "Using authorization flow: ${FLOW_PK}"
+
+# Find OAuth scope mappings for email, openid, profile
+echo "Finding OAuth scope mappings..."
+SCOPE_MAPPINGS=$(curl -sf -H "${AUTH_HEADER}" "${API}/propertymappings/all/?page_size=50" | python3 -c "
+import sys,json
+data = json.load(sys.stdin)
+pks = [r['pk'] for r in data.get('results',[])
+       if 'OAuth Mapping' in r.get('name','')
+       and any(s in r['name'] for s in [\"'email'\", \"'openid'\", \"'profile'\"])]
+print(json.dumps(pks))
+" 2>/dev/null)
+echo "Scope mappings: ${SCOPE_MAPPINGS}"
+
+# Find a signing key
+SIGNING_KEY=$(curl -sf -H "${AUTH_HEADER}" "${API}/crypto/certificatekeypairs/?ordering=name&has_key=true" | python3 -c "
+import sys,json
+results = json.load(sys.stdin)['results']
+print(results[0]['pk'] if results else 'null')
+" 2>/dev/null)
+echo "Signing key: ${SIGNING_KEY}"
 
 # Create OAuth2 provider
 echo "Creating OAuth2 provider..."
@@ -51,12 +71,12 @@ PROVIDER_ID=$(curl -sf -X POST -H "${AUTH_HEADER}" -H "Content-Type: application
   "${API}/providers/oauth2/" \
   -d "{
     \"name\": \"Workout App\",
-    \"authorization_flow\": \"${FLOW_SLUG}\",
+    \"authorization_flow\": \"${FLOW_PK}\",
     \"client_type\": \"public\",
     \"client_id\": \"${CLIENT_ID}\",
     \"redirect_uris\": \"${REDIRECT_URIS}\",
-    \"property_mappings\": [],
-    \"signing_key\": null,
+    \"property_mappings\": ${SCOPE_MAPPINGS},
+    \"signing_key\": \"${SIGNING_KEY}\",
     \"sub_mode\": \"hashed_user_id\",
     \"include_claims_in_id_token\": true,
     \"access_code_validity\": \"minutes=1\",

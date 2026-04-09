@@ -8,6 +8,23 @@ function getConfig() {
   return { authority, clientId, redirectUri };
 }
 
+// Cache for OIDC discovery document endpoints
+let discoveryCache: { authorization_endpoint: string; token_endpoint: string } | null = null;
+
+async function getDiscoveryEndpoints(): Promise<{ authorization_endpoint: string; token_endpoint: string }> {
+  if (discoveryCache) return discoveryCache;
+  const { authority } = getConfig();
+  if (!authority) throw new Error('OIDC authority not configured');
+  const resp = await fetch(`${authority}/.well-known/openid-configuration`);
+  if (!resp.ok) throw new Error(`OIDC discovery failed: ${resp.status}`);
+  const doc = await resp.json();
+  discoveryCache = {
+    authorization_endpoint: doc.authorization_endpoint,
+    token_endpoint: doc.token_endpoint,
+  };
+  return discoveryCache;
+}
+
 export function isOidcConfigured(): boolean {
   const { authority, clientId, redirectUri } = getConfig();
   return Boolean(authority && clientId && redirectUri);
@@ -38,10 +55,12 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 // --- OIDC flow ---
 
 export async function login(): Promise<void> {
-  const { authority, clientId, redirectUri } = getConfig();
-  if (!authority || !clientId || !redirectUri) {
+  const { clientId, redirectUri } = getConfig();
+  if (!clientId || !redirectUri) {
     throw new Error('OIDC not configured');
   }
+
+  const { authorization_endpoint } = await getDiscoveryEndpoints();
 
   const codeVerifier = generateRandom(32);
   const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -64,12 +83,12 @@ export async function login(): Promise<void> {
     nonce,
   });
 
-  window.location.href = `${authority}/authorize/?${params.toString()}`;
+  window.location.href = `${authorization_endpoint}?${params.toString()}`;
 }
 
 export async function handleCallback(code: string, state: string): Promise<void> {
-  const { authority, clientId, redirectUri } = getConfig();
-  if (!authority || !clientId || !redirectUri) {
+  const { clientId, redirectUri } = getConfig();
+  if (!clientId || !redirectUri) {
     throw new Error('OIDC not configured');
   }
 
@@ -84,8 +103,10 @@ export async function handleCallback(code: string, state: string): Promise<void>
     throw new Error('Missing OIDC code verifier');
   }
 
+  const { token_endpoint } = await getDiscoveryEndpoints();
+
   // Exchange code for tokens
-  const response = await fetch(`${authority}/token/`, {
+  const response = await fetch(token_endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -126,14 +147,15 @@ export async function handleCallback(code: string, state: string): Promise<void>
 }
 
 export async function refreshAccessToken(): Promise<string | null> {
-  const { authority, clientId } = getConfig();
-  if (!authority || !clientId) return null;
+  const { clientId } = getConfig();
+  if (!clientId) return null;
 
   const refreshToken = localStorage.getItem('__auth_refresh_token');
   if (!refreshToken) return null;
 
   try {
-    const response = await fetch(`${authority}/token/`, {
+    const { token_endpoint } = await getDiscoveryEndpoints();
+    const response = await fetch(token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({

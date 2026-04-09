@@ -19,6 +19,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         var metadataAddress = builder.Configuration["Auth:MetadataAddress"];
         if (!string.IsNullOrEmpty(metadataAddress))
         {
+            if (metadataAddress.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                options.RequireHttpsMetadata = false;
+            }
             // Use separate internal URL for JWKS/metadata fetching (docker networking)
             // while validating the external issuer URL that appears in tokens
             options.MetadataAddress = metadataAddress;

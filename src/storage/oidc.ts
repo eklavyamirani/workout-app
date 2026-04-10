@@ -9,9 +9,13 @@ function getConfig() {
 }
 
 // Cache for OIDC discovery document endpoints
-let discoveryCache: { authorization_endpoint: string; token_endpoint: string } | null = null;
+let discoveryCache: {
+  authorization_endpoint: string;
+  token_endpoint: string;
+  end_session_endpoint: string;
+} | null = null;
 
-async function getDiscoveryEndpoints(): Promise<{ authorization_endpoint: string; token_endpoint: string }> {
+async function getDiscoveryEndpoints() {
   if (discoveryCache) return discoveryCache;
   const { authority } = getConfig();
   if (!authority) throw new Error('OIDC authority not configured');
@@ -21,6 +25,7 @@ async function getDiscoveryEndpoints(): Promise<{ authorization_endpoint: string
   discoveryCache = {
     authorization_endpoint: doc.authorization_endpoint,
     token_endpoint: doc.token_endpoint,
+    end_session_endpoint: doc.end_session_endpoint,
   };
   return discoveryCache;
 }
@@ -82,6 +87,13 @@ export async function login(): Promise<void> {
     state,
     nonce,
   });
+
+  // After an explicit logout, force re-authentication so the IdP doesn't
+  // silently reuse the previous session.
+  if (sessionStorage.getItem('oidc_force_login')) {
+    params.set('prompt', 'login');
+    sessionStorage.removeItem('oidc_force_login');
+  }
 
   window.location.href = `${authorization_endpoint}?${params.toString()}`;
 }
@@ -187,6 +199,8 @@ export async function refreshAccessToken(): Promise<string | null> {
 export function logout(): void {
   localStorage.removeItem('__auth_refresh_token');
   clearAuth();
+  // Signal the next login() call to force re-authentication
+  sessionStorage.setItem('oidc_force_login', '1');
   window.location.reload();
 }
 

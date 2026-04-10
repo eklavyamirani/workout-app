@@ -138,13 +138,14 @@ Two directories are generated during test runs (both are ignored in git):
 ### Test Coverage
 The E2E test suite covers:
 - **Auth Gate** (6 tests) — Anonymous mode entry, data persistence, no API calls
-- **Program Setup** (12 tests) — Exercise selection, custom exercises, weight entry
-- **Ballet** (28 tests) — Setup wizard, routine builder, sessions
-- **GZCLP** (4 tests) — Weightlifting program setup and progression
+- **Ballet** (43 tests) — Setup wizard, routine builder, sessions
+- **Program Setup** (4 tests) — Exercise selection, custom exercises, weight entry
+- **GZCLP** (3 tests) — Weightlifting program setup and progression
 - **Sessions** (3 tests) — Duration-based, skip, weightlifting sets
-- **Calendar** (4 tests) — Rolling calendar, scheduling
+- **Calendar** (3 tests) — Rolling calendar, scheduling
+- **Import/Export** (6 tests) — Program export, import, validation
 - **Multi-Program** (2 tests) — Managing multiple program types together
-- **Import/Export** (11 tests) — Program export, import, validation
+- **OIDC** (5 tests) — Sign-in discovery endpoints, sign-out session clearing
 
 ## Deployment
 See `deploy/README.md` for full-stack container deployment with Traefik, Authentik, and zero-downtime rollout.

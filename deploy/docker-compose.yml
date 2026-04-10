@@ -1,19 +1,144 @@
 services:
+  # --- Reverse proxy ---
+  traefik:
+    image: traefik:v3.3
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+    ports:
+      - "80:80"
+    volumes:
+      - ./traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
+    depends_on:
+      workout-app:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  # --- Frontend ---
   workout-app:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
       args:
         VITE_DEPLOYMENT_MODE: ${DEPLOYMENT_MODE-production}
+        VITE_OIDC_AUTHORITY: ${VITE_OIDC_AUTHORITY-http://localhost/application/o/workout-app}
+        VITE_OIDC_CLIENT_ID: ${VITE_OIDC_CLIENT_ID-workout-app}
+        VITE_OIDC_REDIRECT_URI: ${VITE_OIDC_REDIRECT_URI-http://localhost/}
     image: workout-app:latest
     restart: unless-stopped
     environment:
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE-production}
-    ports:
-      - "4173:4173"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsSL http://localhost:4173/ -o /dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+    labels:
+      - traefik.enable=false
+
+  # --- API ---
+  api:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Default: "Host=db;Database=workout;Username=workout;Password=${DB_PASSWORD-workout}"
+      Auth__Issuer: "http://localhost/application/o/workout-app/"
+      Auth__MetadataAddress: "http://authentik-server:9000/application/o/workout-app/.well-known/openid-configuration"
+      Auth__ClientId: "workout-app"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:5000/api/health -o /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - traefik.enable=false
+
+  # --- App database ---
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: workout
+      POSTGRES_USER: workout
+      POSTGRES_PASSWORD: ${DB_PASSWORD-workout}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workout"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # --- Identity provider ---
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2024.2
+    command: server
+    restart: unless-stopped
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY-change-me-in-production}
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-db
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD-authentik}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD-admin}
+      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL-admin@localhost}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN-test-admin-token}
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_started
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2024.2
+    command: worker
+    restart: unless-stopped
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY-change-me-in-production}
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-db
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD-authentik}
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_started
+
+  authentik-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${AUTHENTIK_DB_PASSWORD-authentik}
+    volumes:
+      - authentik-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  authentik-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - authentik-redis:/data
+
+volumes:
+  pgdata:
+  authentik-pgdata:
+  authentik-redis:

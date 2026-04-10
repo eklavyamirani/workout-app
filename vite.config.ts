@@ -16,6 +16,11 @@ export default defineConfig(({ mode }) => {
     server: {
       port,
       host: true,
+      proxy: {
+        '/api': 'http://localhost',
+        '/application': 'http://localhost',
+        '/.well-known': 'http://localhost',
+      },
     },
     preview: {
       port,

@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { enterAnonymousMode } from './helpers';
 
 test.describe('Rolling Calendar', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('shows scheduled sessions for weekly programs', async ({ page }) => {

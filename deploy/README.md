@@ -1,44 +1,122 @@
 # Deployment Guide
 
-This directory contains production-ready containerization and zero-downtime deployment configuration for the Workout Tracker app. Deployment assets live here (outside `.devcontainer`) as required.
+This directory contains the full-stack deployment configuration: frontend (nginx), API (ASP.NET Core), database (PostgreSQL), identity provider (Authentik), and reverse proxy (Traefik).
 
-## Prerequisites
-- Docker (with BuildKit enabled) and Docker Compose v2
-- Optional: a reverse proxy/ingress for TLS in production
+## Architecture
 
-## Configuration via Environment Variables
-- `PORT` — container listen port (fixed at `4173` in the container; map host ports as needed)
-- `DEPLOYMENT_MODE` — deployment environment label (e.g. `production`, `staging`, `dev`). Surfaced in the UI.
-- **Secrets** — inject at runtime via environment variables (e.g., `API_KEY`, `ANALYTICS_TOKEN`). Do not bake secrets into images.
+```
+:80 → Traefik (file-based routing via traefik-dynamic.yml)
+        ├── /api/*           → API container (:5000)        [priority 10]
+        ├── /api/v3/*        → Authentik (:9000)            [priority 20]
+        ├── /application/*   → Authentik (:9000)  (OIDC endpoints)
+        ├── /.well-known/*   → Authentik (:9000)  (OIDC discovery)
+        ├── /if/*            → Authentik (:9000)  (login UI)
+        ├── /flows/*         → Authentik (:9000)  (auth/logout flows)
+        ├── /static/*        → Authentik (:9000)  (login UI assets)
+        ├── /ws/*            → Authentik (:9000)  (WebSocket)
+        └── /*               → Frontend  (:4173)  (catch-all)   [priority 1]
+```
 
-## Build and Run Locally
+## Services
+
+| Service | Image | Purpose |
+|---------|-------|---------|
+| **traefik** | `traefik:v3.3` | Reverse proxy, file-based path routing (`traefik-dynamic.yml`) |
+| **workout-app** | Built from `deploy/Dockerfile` | Static frontend (nginx) |
+| **api** | Built from `server/Dockerfile` | ASP.NET Core sync API |
+| **db** | `postgres:16-alpine` | App data (user_data + RLS) |
+| **authentik-server** | `ghcr.io/goauthentik/server:2024.2` | OIDC identity provider |
+| **authentik-worker** | Same as above | Background tasks |
+| **authentik-db** | `postgres:16-alpine` | Authentik data |
+| **authentik-redis** | `redis:7-alpine` | Authentik cache |
+
+## Quick Start
+
+```bash
+cd deploy
+
+# Start all services
+docker compose up -d
+
+# Wait for Authentik to be ready (~60-90s on first start)
+# Then set up the OIDC provider (first time only)
+bash ../scripts/setup-authentik.sh
+
+# Verify everything works
+bash ../scripts/test-docker-compose.sh
+```
+
+Visit http://localhost to use the app. Authentik admin: http://localhost/if/admin/ (default: akadmin / admin).
+
+## Configuration
+
+Environment variables are set in `.env` (defaults provided):
+
+```bash
+# App database
+DB_PASSWORD=workout
+
+# Authentik
+AUTHENTIK_SECRET_KEY=change-me-in-production
+AUTHENTIK_DB_PASSWORD=authentik
+AUTHENTIK_BOOTSTRAP_PASSWORD=admin
+AUTHENTIK_BOOTSTRAP_EMAIL=admin@localhost
+AUTHENTIK_BOOTSTRAP_TOKEN=test-admin-token
+
+# Frontend OIDC config (baked into build)
+VITE_OIDC_AUTHORITY=http://localhost/application/o/workout-app
+VITE_OIDC_CLIENT_ID=workout-app
+VITE_OIDC_REDIRECT_URI=http://localhost/
+```
+
+For production, change all passwords and the `AUTHENTIK_SECRET_KEY`.
+
+## Authentik OIDC Setup
+
+The `scripts/setup-authentik.sh` script automates creating the OAuth2 provider, application, and enrollment flow in Authentik. It:
+
+1. Waits for Authentik to be healthy
+2. Finds the implicit-consent authorization flow
+3. Discovers OAuth scope mappings and signing key
+4. Creates a public OAuth2 provider (client_id: `workout-app`)
+5. Creates the application linked to the provider
+6. Creates an enrollment flow (sign-up) with username, email, and password
+7. Links the enrollment flow to the login page
+8. Verifies the OIDC discovery endpoint
+
+Run it once after first `docker compose up`:
+```bash
+AUTHENTIK_URL=http://localhost AUTHENTIK_TOKEN=test-admin-token bash scripts/setup-authentik.sh
+```
+
+## Zero-Downtime Update
+
 ```bash
 cd deploy
 docker compose build
 docker compose up -d
 ```
-Visit http://localhost:4173 to view the app. Health endpoint: http://localhost:4173/health
 
-## Production Zero-Downtime Rolling Update
-1) Build new image
-```bash
-cd deploy
-docker compose build
-```
-2) Start/Update with Compose (rolling, keeps old container until new is healthy)
-```bash
-docker compose up -d
-```
-Compose uses the healthcheck on `/health` to keep the previous container running until the new one is healthy, minimizing downtime.
+Compose uses healthchecks to keep the previous containers running until new ones are healthy.
 
-## Alternative: Docker Run
-```bash
-docker build -t workout-app:latest -f deploy/Dockerfile .
-docker run -d -p 4173:4173 -e PORT=4173 -e DEPLOYMENT_MODE=production workout-app:latest
-```
+## API Configuration
+
+The API container accepts these environment variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `ConnectionStrings__Default` | PostgreSQL connection string |
+| `Auth__Issuer` | JWT issuer URL (external, matches token `iss` claim) |
+| `Auth__MetadataAddress` | OIDC discovery URL (internal, for JWKS fetching) |
+| `Auth__ClientId` | OIDC client ID (audience validation) |
+
+The split between `Auth__Issuer` and `Auth__MetadataAddress` allows the API to fetch signing keys from the internal Docker network (`http://authentik-server:9000/...`) while validating the external issuer URL (`http://localhost/...`) that appears in browser-issued JWTs.
 
 ## Notes
-- Static build served by nginx; SPA fallback configured.
-- Healthcheck endpoint exposed at `/health`.
-- Container includes Docker `HEALTHCHECK` probing `/health`.
-- Ports: container listens on 4173; map host/ingress ports to 4173 as needed. `DEPLOYMENT_MODE` remains configurable via env vars. When running behind a reverse proxy/ingress (for TLS or domain routing), route traffic to container port 4173. Security headers (CSP, XFO, etc.) remain compatible with reverse proxies; extend CSP `connect-src` only if your frontend must call additional origins.
+
+- Frontend: static build served by nginx with SPA fallback, security headers (CSP, XFO, etc.)
+- API: validates JWTs against Authentik's JWKS endpoint, enforces PostgreSQL Row-Level Security
+- Traefik uses file-based routing (`traefik-dynamic.yml`) with priority ordering (Authentik=20, API=10, Frontend=1)
+- The `/api/v3` prefix is routed to Authentik (not the app API) for Authentik's internal API calls
+- Health endpoints: frontend `/health`, API `/api/health`
+- All data is isolated per-user via PostgreSQL RLS policies

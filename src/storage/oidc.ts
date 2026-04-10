@@ -88,13 +88,6 @@ export async function login(): Promise<void> {
     nonce,
   });
 
-  // After an explicit logout, force re-authentication so the IdP doesn't
-  // silently reuse the previous session.
-  if (sessionStorage.getItem('oidc_force_login')) {
-    params.set('prompt', 'login');
-    sessionStorage.removeItem('oidc_force_login');
-  }
-
   window.location.href = `${authorization_endpoint}?${params.toString()}`;
 }
 
@@ -199,8 +192,18 @@ export async function refreshAccessToken(): Promise<string | null> {
 export function logout(): void {
   localStorage.removeItem('__auth_refresh_token');
   clearAuth();
-  // Signal the next login() call to force re-authentication
-  sessionStorage.setItem('oidc_force_login', '1');
+
+  // End the IdP session by redirecting through the invalidation flow.
+  // The flow logs the user out and redirects back to the app via ?next=.
+  const { authority } = getConfig();
+  if (authority) {
+    // Derive the IdP base from the authority (e.g. "http://localhost/application/o/workout-app" → "http://localhost")
+    const authorityUrl = new URL(authority);
+    const idpBase = authorityUrl.origin;
+    window.location.href = `${idpBase}/flows/-/default/invalidation/?next=/`;
+    return;
+  }
+
   window.location.reload();
 }
 

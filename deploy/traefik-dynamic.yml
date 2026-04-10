@@ -13,7 +13,7 @@ http:
       service: api
       priority: 10
     authentik:
-      rule: "PathPrefix(`/application`) || PathPrefix(`/.well-known`) || PathPrefix(`/if`) || PathPrefix(`/outpost.goauthentik.io`) || PathPrefix(`/flows`) || PathPrefix(`/static`) || PathPrefix(`/api/v3`)"
+      rule: "PathPrefix(`/application`) || PathPrefix(`/.well-known`) || PathPrefix(`/if`) || PathPrefix(`/outpost.goauthentik.io`) || PathPrefix(`/flows`) || PathPrefix(`/static`) || PathPrefix(`/api/v3`) || PathPrefix(`/ws`)"
       entryPoints:
         - web
       service: authentik

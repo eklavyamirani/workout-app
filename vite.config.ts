@@ -4,12 +4,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const port = Number(env.PORT) || 3000
+
   return {
     plugins: [react()],
     test: {
       globals: true,
-      // Current unit tests are pure utility functions (no DOM).
-      // Change to 'jsdom' when adding React component tests.
       environment: 'node',
       exclude: ['e2e/**', 'node_modules/**'],
     },
@@ -20,9 +19,6 @@ export default defineConfig(({ mode }) => {
     preview: {
       port,
       host: true,
-    },
-    define: {
-      __DEPLOYMENT_MODE__: JSON.stringify(env.DEPLOYMENT_MODE || mode),
     },
   }
 })

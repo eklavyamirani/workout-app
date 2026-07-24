@@ -1,19 +1,55 @@
 services:
-  workout-app:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-      args:
-        VITE_DEPLOYMENT_MODE: ${DEPLOYMENT_MODE-production}
-    image: workout-app:latest
-    restart: unless-stopped
-    environment:
-      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE-production}
+  frontend:
+    image: ghcr.io/eklavyamirani/workout-app/frontend:dev
     ports:
       - "4173:4173"
+    read_only: true
+    tmpfs:
+      - /tmp/nginx:uid=10001,gid=10001,mode=1770
+    volumes:
+      - ./frontend/runtime-config/config.js:/usr/share/nginx/html/runtime-config/config.js:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsSL http://localhost:4173/ -o /dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:4173/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  api:
+    image: ghcr.io/eklavyamirani/workout-app/api:dev
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: workout
+      DB_USER: workout
+      DB_PASSWORD_FILE: /run/secrets/db_password
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./api/secrets/db_password.txt:/run/secrets/db_password:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:5000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: workout
+      POSTGRES_USER: workout
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - ./api/secrets/db_password.txt:/run/secrets/postgres_password:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workout -d workout"]
+      interval: 10s
+      timeout: 5s
+      retries: 10

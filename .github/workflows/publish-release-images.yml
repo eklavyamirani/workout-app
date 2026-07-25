@@ -147,14 +147,33 @@ jobs:
             ' > /dev/null
           done
 
+      # `docker sbom` is a Docker Desktop CLI plugin and does not exist on GitHub-hosted
+      # runners, so SBOM generation is done with a pinned syft release whose archive is
+      # checksum-verified before use.
+      - name: Install syft
+        env:
+          SYFT_VERSION: 1.49.0
+          SYFT_SHA256: 7aa2f03ee92739cf643279ba3990548b9925d4e22cae13f46831ee62821147fe
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/syft.tar.gz \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  /tmp/syft.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/syft.tar.gz -C /usr/local/bin syft
+          syft version
+
       - name: Generate SPDX SBOMs
+        env:
+          SYFT_CHECK_FOR_APP_UPDATE: 'false'
         run: |
           set -euo pipefail
           mkdir -p sbom
           docker pull --platform linux/amd64 "${FRONTEND_SUBJECT}@${{ steps.digests.outputs.frontend }}"
           docker pull --platform linux/amd64 "${API_SUBJECT}@${{ steps.digests.outputs.api }}"
-          docker sbom --format spdx-json "${FRONTEND_SUBJECT}@${{ steps.digests.outputs.frontend }}" > sbom/frontend.spdx.json
-          docker sbom --format spdx-json "${API_SUBJECT}@${{ steps.digests.outputs.api }}" > sbom/api.spdx.json
+          syft scan -o spdx-json "docker:${FRONTEND_SUBJECT}@${{ steps.digests.outputs.frontend }}" > sbom/frontend.spdx.json
+          syft scan -o spdx-json "docker:${API_SUBJECT}@${{ steps.digests.outputs.api }}" > sbom/api.spdx.json
+          jq -e '.spdxVersion and (.packages | length > 0)' sbom/frontend.spdx.json > /dev/null
+          jq -e '.spdxVersion and (.packages | length > 0)' sbom/api.spdx.json > /dev/null
 
       - name: Attest frontend provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0

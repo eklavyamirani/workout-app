@@ -1,0 +1,339 @@
+name: Build preview images
+
+# Untrusted job boundary:
+#   * `build` executes PR-controlled source and has read-only permissions only.
+#     It never logs into GHCR, never pushes, and has no id-token/attestations/packages scope.
+#   * `attest` holds the OIDC/attestation write scopes and deliberately never checks out
+#     or executes PR-controlled code; it only consumes the exported OCI layouts as data.
+# `pull_request_target` is intentionally not used.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-preview-images-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_SOURCE: https://github.com/eklavyamirani/workout-app
+  FRONTEND_SUBJECT: ghcr.io/eklavyamirani/workout-app/frontend
+  API_SUBJECT: ghcr.io/eklavyamirani/workout-app/api
+
+jobs:
+  build:
+    name: Test and build OCI layouts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      head_sha: ${{ steps.meta.outputs.head_sha }}
+      pr_number: ${{ steps.meta.outputs.pr_number }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Resolve exact PR head SHA
+        id: meta
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Refusing to build: head SHA is not a lowercase 40-character SHA" >&2
+            exit 1
+          fi
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Refusing to build: invalid PR number" >&2
+            exit 1
+          fi
+          {
+            echo "head_sha=$HEAD_SHA"
+            echo "pr_number=$PR_NUMBER"
+            echo "version=pr-${PR_NUMBER}-${HEAD_SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      # The exact PR head commit is built — never the ephemeral merge commit and never a
+      # branch tip that could be moved after the workflow started.
+      - name: Checkout exact PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.meta.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Verify checked out commit
+        run: |
+          set -euo pipefail
+          mkdir -p report/diagnostics
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "${{ steps.meta.outputs.head_sha }}"
+          echo "$actual" > report/diagnostics/built-commit.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install npm dependencies
+        run: npm ci 2>&1 | tee report/diagnostics/npm-ci.log
+
+      - name: Typecheck frontend
+        run: npx tsc --noEmit 2>&1 | tee report/diagnostics/typecheck.log
+
+      - name: Build frontend bundle
+        run: npm run build 2>&1 | tee report/diagnostics/frontend-build.log
+
+      - name: Run API tests
+        run: dotnet test server/server.Tests --logger "console;verbosity=normal" 2>&1 | tee report/diagnostics/api-tests.log
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps 2>&1 | tee report/diagnostics/playwright-install.log
+
+      - name: Run E2E tests
+        run: npm run test:e2e 2>&1 | tee report/diagnostics/e2e-tests.log
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # Inline Buildx provenance and SBOM descriptors are disabled: they would add
+      # `unknown/unknown` descriptors to the index. Provenance and SBOM are supplied as
+      # separate GitHub attestations by the trusted workflows instead.
+      - name: Build frontend OCI layout
+        run: |
+          set -euo pipefail
+          mkdir -p oci
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=false \
+            --sbom=false \
+            --file deploy/Dockerfile \
+            --label "org.opencontainers.image.source=${IMAGE_SOURCE}" \
+            --label "org.opencontainers.image.revision=${{ steps.meta.outputs.head_sha }}" \
+            --label "org.opencontainers.image.version=${{ steps.meta.outputs.version }}" \
+            --label "org.opencontainers.image.title=workout-app-frontend" \
+            --output "type=oci,dest=oci/frontend.raw.tar,name=${FRONTEND_SUBJECT}:${{ steps.meta.outputs.version }}" \
+            . 2>&1 | tee report/diagnostics/frontend-image-build.log
+
+      - name: Build API OCI layout
+        run: |
+          set -euo pipefail
+          mkdir -p oci
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=false \
+            --sbom=false \
+            --file server/Dockerfile \
+            --label "org.opencontainers.image.source=${IMAGE_SOURCE}" \
+            --label "org.opencontainers.image.revision=${{ steps.meta.outputs.head_sha }}" \
+            --label "org.opencontainers.image.version=${{ steps.meta.outputs.version }}" \
+            --label "org.opencontainers.image.title=workout-app-api" \
+            --output "type=oci,dest=oci/api.raw.tar,name=${API_SUBJECT}:${{ steps.meta.outputs.version }}" \
+            server 2>&1 | tee report/diagnostics/api-image-build.log
+
+      # Buildx writes a layout whose root index.json only references the real image index.
+      # The homelab contract requires the root index.json to *be* the image index, so that
+      # sha256(index.json) equals the digest that is later pushed to the registry.
+      - name: Normalize OCI layouts and verify platforms
+        id: layouts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts report/diagnostics
+
+          for component in frontend api; do
+            workdir="oci/${component}-layout"
+            rm -rf "$workdir"
+            mkdir -p "$workdir"
+            tar -xf "oci/${component}.raw.tar" -C "$workdir"
+
+            nested="$(jq -r '.manifests | map(select(.mediaType == "application/vnd.oci.image.index.v1+json")) | .[0].digest // empty' "$workdir/index.json")"
+            if [ -z "$nested" ]; then
+              echo "${component}: exported layout does not contain a multi-platform image index" >&2
+              exit 1
+            fi
+            cp "$workdir/blobs/sha256/${nested#sha256:}" "$workdir/index.json"
+
+            jq -e '
+              (.manifests | length) == 2 and
+              ([.manifests[] | ((.platform.os // "") + "/" + (.platform.architecture // ""))] | sort == ["linux/amd64", "linux/arm64"]) and
+              ([.manifests[] | select((.platform.os // "") == "unknown" or (.platform.architecture // "") == "unknown")] | length == 0)
+            ' "$workdir/index.json" > /dev/null
+
+            index_digest="sha256:$(sha256sum "$workdir/index.json" | awk '{print $1}')"
+            if [ "$index_digest" != "$nested" ]; then
+              echo "${component}: normalized index digest does not match the image index digest" >&2
+              exit 1
+            fi
+
+            (cd "$workdir" && tar -cf "${GITHUB_WORKSPACE}/artifacts/${component}.oci.tar" .)
+
+            echo "${component}_index_digest=${index_digest}" >> "$GITHUB_OUTPUT"
+            cp "$workdir/index.json" "report/diagnostics/${component}-index.json"
+          done
+
+      - name: Verify image labels and non-root users
+        run: |
+          set -euo pipefail
+          expected_version='${{ steps.meta.outputs.version }}'
+          expected_revision='${{ steps.meta.outputs.head_sha }}'
+
+          for component in frontend api; do
+            workdir="oci/${component}-layout"
+            if [ "$component" = "frontend" ]; then
+              expected_title="workout-app-frontend"
+            else
+              expected_title="workout-app-api"
+            fi
+
+            for manifest_digest in $(jq -r '.manifests[].digest' "$workdir/index.json"); do
+              manifest="$workdir/blobs/sha256/${manifest_digest#sha256:}"
+              config_digest="$(jq -r '.config.digest' "$manifest")"
+              config="$workdir/blobs/sha256/${config_digest#sha256:}"
+
+              jq -e \
+                --arg source "${IMAGE_SOURCE}" \
+                --arg revision "$expected_revision" \
+                --arg version "$expected_version" \
+                --arg title "$expected_title" '
+                .config.Labels["org.opencontainers.image.source"] == $source and
+                .config.Labels["org.opencontainers.image.revision"] == $revision and
+                .config.Labels["org.opencontainers.image.version"] == $version and
+                .config.Labels["org.opencontainers.image.title"] == $title
+              ' "$config" > /dev/null
+
+              user="$(jq -r '.config.User // ""' "$config")"
+              case "$user" in
+                ""|root|0|0:0)
+                  echo "${component}: image user '${user}' is root or unset" >&2
+                  exit 1
+                  ;;
+              esac
+            done
+          done
+
+      - name: Write build metadata
+        run: |
+          set -euo pipefail
+          mkdir -p metadata
+          write_metadata() {
+            component="$1"
+            title="$2"
+            index_digest="$3"
+            subject="$4"
+            cat > "metadata/${component}.json" <<JSON
+          {
+            "repository": "${{ github.repository }}",
+            "pr_number": ${{ steps.meta.outputs.pr_number }},
+            "head_sha": "${{ steps.meta.outputs.head_sha }}",
+            "component": "${component}",
+            "subject_name": "${subject}",
+            "index_digest": "${index_digest}",
+            "platforms": ["linux/amd64", "linux/arm64"],
+            "labels": {
+              "org.opencontainers.image.source": "${IMAGE_SOURCE}",
+              "org.opencontainers.image.revision": "${{ steps.meta.outputs.head_sha }}",
+              "org.opencontainers.image.version": "${{ steps.meta.outputs.version }}",
+              "org.opencontainers.image.title": "${title}"
+            },
+            "build_result": "success",
+            "workflow_run_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          JSON
+          }
+
+          write_metadata frontend workout-app-frontend '${{ steps.layouts.outputs.frontend_index_digest }}' "${FRONTEND_SUBJECT}"
+          write_metadata api workout-app-api '${{ steps.layouts.outputs.api_index_digest }}' "${API_SUBJECT}"
+
+      - name: Upload OCI layouts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: preview-oci-layouts
+          path: |
+            artifacts/frontend.oci.tar
+            artifacts/api.oci.tar
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build metadata
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: preview-build-metadata
+          path: |
+            metadata/frontend.json
+            metadata/api.json
+          if-no-files-found: error
+          retention-days: 7
+
+      # Diagnostics contain build/test logs only. No secret is available to this job and
+      # no step echoes environment values, so the logs cannot carry secret material.
+      # Only the three artifact names the trusted publisher expects are ever uploaded.
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: preview-build-diagnostics
+          path: report/diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
+
+  attest:
+    name: Attest build provenance
+    needs: build
+    runs-on: ubuntu-latest
+    # This job holds the signing scopes and therefore never checks out PR-controlled code.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download OCI layouts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: preview-oci-layouts
+          path: artifacts
+
+      - name: Extract OCI index subjects
+        id: subjects
+        run: |
+          set -euo pipefail
+          mkdir -p subjects
+          for component in frontend api; do
+            tar -xOf "artifacts/${component}.oci.tar" index.json > "subjects/${component}-index.json"
+            digest="sha256:$(sha256sum "subjects/${component}-index.json" | awk '{print $1}')"
+            echo "${component}_digest=${digest}" >> "$GITHUB_OUTPUT"
+          done
+
+      # The attested subject is the OCI index digest, never the tar archive digest.
+      - name: Attest frontend build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/eklavyamirani/workout-app/frontend
+          subject-digest: ${{ steps.subjects.outputs.frontend_digest }}
+
+      - name: Attest API build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/eklavyamirani/workout-app/api
+          subject-digest: ${{ steps.subjects.outputs.api_digest }}
+
+      - name: Verify build provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ needs.build.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          for component in frontend api; do
+            gh attestation verify "subjects/${component}-index.json" \
+              --repo "${{ github.repository }}" \
+              --signer-workflow "${{ github.repository }}/.github/workflows/build-preview-images.yml" \
+              --predicate-type "https://slsa.dev/provenance/v1" \
+              --source-digest "$HEAD_SHA" \
+              --format json > "${component}-build-provenance.json"
+          done

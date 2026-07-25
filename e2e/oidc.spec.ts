@@ -142,10 +142,12 @@ test.describe('OIDC sign-out', () => {
     let invalidationUrl: string | null = null;
     await page.route('**/flows/-/default/invalidation/**', route => {
       invalidationUrl = route.request().url();
-      // Redirect back to the app as the real flow would
+      // Redirect back to the app as the real flow would. WebKit refuses
+      // route.fulfill() with a 3xx status, so emulate the redirect with HTML.
       route.fulfill({
-        status: 302,
-        headers: { Location: '/' },
+        status: 200,
+        contentType: 'text/html',
+        body: '<html><head><meta http-equiv="refresh" content="0; url=/"></head><body></body></html>',
       });
     });
 
@@ -176,8 +178,9 @@ test.describe('OIDC sign-out', () => {
     const baseUrl = page.url().replace(/\/$/, '');
     await page.route('**/flows/-/default/invalidation/**', route =>
       route.fulfill({
-        status: 302,
-        headers: { Location: `${baseUrl}/` },
+        status: 200,
+        contentType: 'text/html',
+        body: `<html><head><meta http-equiv="refresh" content="0; url=${baseUrl}/"></head><body></body></html>`,
       }),
     );
 

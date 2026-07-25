@@ -1,0 +1,7 @@
+{
+  "apiBaseUrl": "",
+  "deploymentMode": "local",
+  "oidcAuthority": "http://localhost/application/o/workout-app",
+  "oidcClientId": "workout-app",
+  "oidcRedirectUri": "http://localhost/"
+}

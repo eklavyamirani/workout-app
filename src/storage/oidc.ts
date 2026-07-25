@@ -1,11 +1,15 @@
 import { setAuthToken, clearAuth, getToken } from './auth';
+import { getRuntimeConfig } from './runtimeConfig';
 
-// OIDC configuration from Vite env vars
+// OIDC configuration comes from the mounted runtime configuration so that no
+// authority, client id or redirect URI is baked into the published image.
 function getConfig() {
-  const authority = import.meta.env.VITE_OIDC_AUTHORITY as string | undefined;
-  const clientId = import.meta.env.VITE_OIDC_CLIENT_ID as string | undefined;
-  const redirectUri = import.meta.env.VITE_OIDC_REDIRECT_URI as string | undefined;
-  return { authority, clientId, redirectUri };
+  const runtime = getRuntimeConfig();
+  return {
+    authority: runtime.oidcAuthority,
+    clientId: runtime.oidcClientId,
+    redirectUri: runtime.oidcRedirectUri,
+  };
 }
 
 // Cache for OIDC discovery document endpoints

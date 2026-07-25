@@ -50,26 +50,47 @@ Visit http://localhost to use the app. Authentik admin: http://localhost/if/admi
 
 ## Configuration
 
-Environment variables are set in `.env` (defaults provided):
+### Secrets (never committed)
+
+Passwords are supplied as files, not environment variables. Create them before the first
+`docker compose up`:
 
 ```bash
-# App database
-DB_PASSWORD=workout
-
-# Authentik
-AUTHENTIK_SECRET_KEY=change-me-in-production
-AUTHENTIK_DB_PASSWORD=authentik
-AUTHENTIK_BOOTSTRAP_PASSWORD=admin
-AUTHENTIK_BOOTSTRAP_EMAIL=admin@localhost
-AUTHENTIK_BOOTSTRAP_TOKEN=test-admin-token
-
-# Frontend OIDC config (baked into build)
-VITE_OIDC_AUTHORITY=http://localhost/application/o/workout-app
-VITE_OIDC_CLIENT_ID=workout-app
-VITE_OIDC_REDIRECT_URI=http://localhost/
+cd deploy
+mkdir -p secrets
+openssl rand -hex 24 > secrets/postgres-password
+openssl rand -hex 24 > secrets/app-role-password
 ```
 
-For production, change all passwords and the `AUTHENTIK_SECRET_KEY`.
+`deploy/secrets/` is gitignored. The API reads the password from the mounted file and never
+requires a secret-bearing environment variable.
+
+### Non-secret environment
+
+Copy `.env.example` to `.env` and adjust as needed (`deploy/.env` is gitignored):
+
+```bash
+cp .env.example .env
+```
+
+### Frontend runtime configuration
+
+The frontend image is environment-agnostic — no domains, API URLs or OIDC identifiers are
+baked in at build time. Deployment configuration is mounted at
+`/usr/share/nginx/html/runtime-config.json` and read by the app at startup, so the *same*
+image digest can serve multiple environments:
+
+```json
+{
+  "apiBaseUrl": "",
+  "deploymentMode": "production",
+  "oidcAuthority": "https://auth.example.com/application/o/workout-app",
+  "oidcClientId": "workout-app",
+  "oidcRedirectUri": "https://workout.example.com/"
+}
+```
+
+An empty `apiBaseUrl` means "same origin" (the Traefik setup above).
 
 ## Authentik OIDC Setup
 
@@ -105,7 +126,11 @@ The API container accepts these environment variables:
 
 | Variable | Purpose |
 |----------|---------|
-| `ConnectionStrings__Default` | PostgreSQL connection string |
+| `ConnectionStrings__Default` | PostgreSQL connection info for the runtime (non-superuser) role — **without** a password |
+| `ConnectionStrings__Default__PasswordFile` | Path to the mounted file holding the runtime role password |
+| `ConnectionStrings__Admin` | Optional administrative connection used only for schema/role bootstrap |
+| `ConnectionStrings__Admin__PasswordFile` | Path to the mounted file holding the administrative password |
+| `Database__AppRolePasswordFile` | Path to the file whose contents become the `workout_app` role password |
 | `Auth__Issuer` | JWT issuer URL (external, matches token `iss` claim) |
 | `Auth__MetadataAddress` | OIDC discovery URL (internal, for JWKS fetching) |
 | `Auth__ClientId` | OIDC client ID (audience validation) |
@@ -116,6 +141,9 @@ The split between `Auth__Issuer` and `Auth__MetadataAddress` allows the API to f
 
 - Frontend: static build served by nginx with SPA fallback, security headers (CSP, XFO, etc.)
 - API: validates JWTs against Authentik's JWKS endpoint, enforces PostgreSQL Row-Level Security
+- The API connects as the non-superuser `workout_app` role so RLS is actually enforced; the
+  superuser connection is used only for schema and role bootstrap
+- Both images run as numeric non-root users with read-only root filesystems and explicit tmpfs mounts
 - Traefik uses file-based routing (`traefik-dynamic.yml`) with priority ordering (Authentik=20, API=10, Frontend=1)
 - The `/api/v3` prefix is routed to Authentik (not the app API) for Authentik's internal API calls
 - Health endpoints: frontend `/health`, API `/api/health`

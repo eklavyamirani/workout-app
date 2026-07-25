@@ -28,7 +28,8 @@ build/
 # Misc
 .cache/
 .eslintcache
-.vercel
 
 # Local deployment secrets (never commit)
 deploy/.env
+deploy/secrets/*
+!deploy/secrets/.gitkeep

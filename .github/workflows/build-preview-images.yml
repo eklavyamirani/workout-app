@@ -138,10 +138,13 @@ jobs:
             --output "type=oci,dest=oci/api.raw.tar,name=${API_SUBJECT}:${{ steps.meta.outputs.version }}" \
             server 2>&1 | tee report/diagnostics/api-image-build.log
 
-      # Buildx writes a layout whose root index.json only references the real image index.
-      # The homelab contract requires the root index.json to *be* the image index, so that
-      # sha256(index.json) equals the digest that is later pushed to the registry.
-      - name: Normalize OCI layouts and verify platforms
+      # Buildx exports a layout whose root index.json references the real multi-platform
+      # image index as a nested blob. The archive is uploaded pristine: rewriting
+      # index.json drops the ref-name annotation and makes skopeo reject the layout with
+      # "more than one image in oci, choose an image". The index digest that is later
+      # pushed to the registry is the digest of the nested index blob, so it is derived
+      # with jq without modifying the archive.
+      - name: Resolve OCI index digests and verify platforms
         id: layouts
         run: |
           set -euo pipefail
@@ -153,29 +156,30 @@ jobs:
             mkdir -p "$workdir"
             tar -xf "oci/${component}.raw.tar" -C "$workdir"
 
-            nested="$(jq -r '.manifests | map(select(.mediaType == "application/vnd.oci.image.index.v1+json")) | .[0].digest // empty' "$workdir/index.json")"
-            if [ -z "$nested" ]; then
+            index_digest="$(jq -r '.manifests | map(select(.mediaType == "application/vnd.oci.image.index.v1+json")) | .[0].digest // empty' "$workdir/index.json")"
+            if [ -z "$index_digest" ]; then
               echo "${component}: exported layout does not contain a multi-platform image index" >&2
               exit 1
             fi
-            cp "$workdir/blobs/sha256/${nested#sha256:}" "$workdir/index.json"
+
+            image_index="$workdir/blobs/sha256/${index_digest#sha256:}"
 
             jq -e '
               (.manifests | length) == 2 and
               ([.manifests[] | ((.platform.os // "") + "/" + (.platform.architecture // ""))] | sort == ["linux/amd64", "linux/arm64"]) and
               ([.manifests[] | select((.platform.os // "") == "unknown" or (.platform.architecture // "") == "unknown")] | length == 0)
-            ' "$workdir/index.json" > /dev/null
+            ' "$image_index" > /dev/null
 
-            index_digest="sha256:$(sha256sum "$workdir/index.json" | awk '{print $1}')"
-            if [ "$index_digest" != "$nested" ]; then
-              echo "${component}: normalized index digest does not match the image index digest" >&2
+            computed="sha256:$(sha256sum "$image_index" | awk '{print $1}')"
+            if [ "$computed" != "$index_digest" ]; then
+              echo "${component}: image index blob digest does not match its descriptor" >&2
               exit 1
             fi
 
-            (cd "$workdir" && tar -cf "${GITHUB_WORKSPACE}/artifacts/${component}.oci.tar" .)
+            cp "oci/${component}.raw.tar" "artifacts/${component}.oci.tar"
 
             echo "${component}_index_digest=${index_digest}" >> "$GITHUB_OUTPUT"
-            cp "$workdir/index.json" "report/diagnostics/${component}-index.json"
+            cp "$image_index" "report/diagnostics/${component}-index.json"
           done
 
       - name: Verify image labels and non-root users
@@ -192,7 +196,8 @@ jobs:
               expected_title="workout-app-api"
             fi
 
-            for manifest_digest in $(jq -r '.manifests[].digest' "$workdir/index.json"); do
+            image_index="report/diagnostics/${component}-index.json"
+            for manifest_digest in $(jq -r '.manifests[].digest' "$image_index"); do
               manifest="$workdir/blobs/sha256/${manifest_digest#sha256:}"
               config_digest="$(jq -r '.config.digest' "$manifest")"
               config="$workdir/blobs/sha256/${config_digest#sha256:}"
@@ -304,10 +309,22 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p subjects
+          # The subject is the nested multi-platform image index blob, which is the digest
+          # that is published to the registry. The archive is never modified.
           for component in frontend api; do
-            tar -xOf "artifacts/${component}.oci.tar" index.json > "subjects/${component}-index.json"
-            digest="sha256:$(sha256sum "subjects/${component}-index.json" | awk '{print $1}')"
-            echo "${component}_digest=${digest}" >> "$GITHUB_OUTPUT"
+            root_index="$(tar -xOf "artifacts/${component}.oci.tar" index.json)"
+            index_digest="$(printf '%s' "$root_index" | jq -r '.manifests | map(select(.mediaType == "application/vnd.oci.image.index.v1+json")) | .[0].digest // empty')"
+            if [ -z "$index_digest" ]; then
+              echo "${component}: layout does not contain a multi-platform image index" >&2
+              exit 1
+            fi
+            tar -xOf "artifacts/${component}.oci.tar" "blobs/sha256/${index_digest#sha256:}" > "subjects/${component}-index.json"
+            computed="sha256:$(sha256sum "subjects/${component}-index.json" | awk '{print $1}')"
+            if [ "$computed" != "$index_digest" ]; then
+              echo "${component}: extracted index digest mismatch" >&2
+              exit 1
+            fi
+            echo "${component}_digest=${index_digest}" >> "$GITHUB_OUTPUT"
           done
 
       # The attested subject is the OCI index digest, never the tar archive digest.
@@ -323,6 +340,11 @@ jobs:
           subject-name: ghcr.io/eklavyamirani/workout-app/api
           subject-digest: ${{ steps.subjects.outputs.api_digest }}
 
+      # `--source-digest` is deliberately not used: for `pull_request` events GITHUB_SHA is
+      # the ephemeral merge commit, so a Sigstore-bound source digest can never equal the PR
+      # head SHA. Builder identity is proven by --repo/--signer-workflow, and the link to the
+      # exact head commit is proven by the org.opencontainers.image.revision label, which the
+      # build job and the trusted publisher both verify against the exact head SHA.
       - name: Verify build provenance
         env:
           GH_TOKEN: ${{ github.token }}
@@ -334,6 +356,9 @@ jobs:
               --repo "${{ github.repository }}" \
               --signer-workflow "${{ github.repository }}/.github/workflows/build-preview-images.yml" \
               --predicate-type "https://slsa.dev/provenance/v1" \
-              --source-digest "$HEAD_SHA" \
               --format json > "${component}-build-provenance.json"
+            jq -e --arg d "sha256:$(sha256sum "subjects/${component}-index.json" | awk '{print $1}')" \
+              '[.[] | .attestation.bundle.dsseEnvelope] | length > 0' \
+              "${component}-build-provenance.json" > /dev/null
+            echo "${component}: provenance verified for subject $(sha256sum "subjects/${component}-index.json" | awk '{print $1}')"
           done

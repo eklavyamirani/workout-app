@@ -121,9 +121,27 @@ jobs:
               expected_title="workout-app-api"
             fi
 
+            # The uploaded OCI archive is the pristine buildx export: its root index.json is a
+            # single-entry index pointing at the real multi-platform image index blob. The
+            # digest that is published to the registry is the digest of that nested blob.
+            # The archive must not be rewritten to make the root index the image index --
+            # doing so drops the ref-name annotation and makes skopeo reject the layout with
+            # "more than one image in oci, choose an image".
+            root_index="report/runtime/${component}-root-index.json"
+            tar -xOf "artifacts/oci/${component}.oci.tar" index.json > "$root_index"
+            index_digest="$(jq -r '.manifests | map(select(.mediaType == "application/vnd.oci.image.index.v1+json")) | .[0].digest // empty' "$root_index")"
+            if [ -z "$index_digest" ]; then
+              echo "${component}: OCI layout does not contain a multi-platform image index" >&2
+              exit 1
+            fi
+
             index_json="report/runtime/${component}-index-local.json"
-            tar -xOf "artifacts/oci/${component}.oci.tar" index.json > "$index_json"
-            index_digest="sha256:$(sha256sum "$index_json" | awk '{print $1}')"
+            tar -xOf "artifacts/oci/${component}.oci.tar" "blobs/sha256/${index_digest#sha256:}" > "$index_json"
+            computed_digest="sha256:$(sha256sum "$index_json" | awk '{print $1}')"
+            if [ "$computed_digest" != "$index_digest" ]; then
+              echo "${component}: image index blob digest does not match its descriptor" >&2
+              exit 1
+            fi
             echo "${component}_index_digest=${index_digest}" >> "$GITHUB_OUTPUT"
 
             jq -e '
@@ -151,6 +169,11 @@ jobs:
             done
           done
 
+      # `--source-digest` is not used: on `pull_request` GITHUB_SHA is the ephemeral merge
+      # commit and on `workflow_run` it is the default-branch tip, so a Sigstore-bound source
+      # digest can never equal the PR head SHA. Builder identity is proven by
+      # --repo/--signer-workflow, and the binding to the exact head commit is proven by the
+      # org.opencontainers.image.revision label verified above.
       - name: Verify build provenance attestations against index digests
         env:
           GH_TOKEN: ${{ github.token }}
@@ -167,7 +190,6 @@ jobs:
               --repo "$EXPECTED_REPO" \
               --signer-workflow "$BUILD_SIGNER_WORKFLOW" \
               --predicate-type "$SLSA_PREDICATE" \
-              --source-digest "${{ steps.pr.outputs.head_sha }}" \
               --format json > "$out_file"
 
             expected_sha="${expected_digest#sha256:}"

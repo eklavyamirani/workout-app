@@ -28,5 +28,4 @@ build/
 # Misc
 .cache/
 .eslintcache
-api/**/bin/
-api/**/obj/
+.vercel

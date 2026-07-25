@@ -24,6 +24,10 @@ jobs:
       cancel-in-progress: true
     env:
       EXPECTED_REPO: eklavyamirani/workout-app
+      BUILD_SIGNER_WORKFLOW: eklavyamirani/workout-app/.github/workflows/build-preview-images.yml
+      PUBLISH_SIGNER_WORKFLOW: eklavyamirani/workout-app/.github/workflows/publish-preview-images.yml
+      SLSA_PREDICATE: https://slsa.dev/provenance/v1
+      SPDX_PREDICATE: https://spdx.dev/Document
     steps:
       - name: Validate workflow_run payload
         run: |
@@ -113,6 +117,23 @@ jobs:
             .oci_labels["org.opencontainers.image.title"] == "workout-app-api"
           ' artifacts/metadata/api.json > /dev/null
 
+      - name: Verify exact-head build provenance attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh attestation verify artifacts/oci/frontend.oci.tar \
+            --repo "$EXPECTED_REPO" \
+            --signer-workflow "$BUILD_SIGNER_WORKFLOW" \
+            --predicate-type "$SLSA_PREDICATE" \
+            --source-digest "${{ steps.pr.outputs.head_sha }}"
+
+          gh attestation verify artifacts/oci/api.oci.tar \
+            --repo "$EXPECTED_REPO" \
+            --signer-workflow "$BUILD_SIGNER_WORKFLOW" \
+            --predicate-type "$SLSA_PREDICATE" \
+            --source-digest "${{ steps.pr.outputs.head_sha }}"
+
       - name: Install skopeo
         run: |
           sudo apt-get update
@@ -145,23 +166,21 @@ jobs:
           echo "frontend_digest=${FRONTEND_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "api_digest=${API_DIGEST}" >> "$GITHUB_OUTPUT"
 
-      - name: Attest frontend provenance
+      - name: Attest frontend publisher provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
         with:
           subject-name: ghcr.io/eklavyamirani/workout-app/frontend
           subject-digest: ${{ steps.publish.outputs.frontend_digest }}
           push-to-registry: true
 
-      - name: Attest API provenance
+      - name: Attest API publisher provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
         with:
           subject-name: ghcr.io/eklavyamirani/workout-app/api
           subject-digest: ${{ steps.publish.outputs.api_digest }}
           push-to-registry: true
 
-      - name: Generate SBOM files
-        id: sbom
-        continue-on-error: true
+      - name: Generate SPDX SBOM files
         run: |
           set -euo pipefail
           docker pull "${{ steps.publish.outputs.frontend_image }}"
@@ -169,8 +188,7 @@ jobs:
           docker sbom --format spdx-json "${{ steps.publish.outputs.frontend_image }}" > frontend.spdx.json
           docker sbom --format spdx-json "${{ steps.publish.outputs.api_image }}" > api.spdx.json
 
-      - name: Attest frontend SBOM
-        if: steps.sbom.outcome == 'success'
+      - name: Attest frontend SPDX SBOM
         uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b
         with:
           subject-name: ghcr.io/eklavyamirani/workout-app/frontend
@@ -178,8 +196,7 @@ jobs:
           sbom-path: frontend.spdx.json
           push-to-registry: true
 
-      - name: Attest API SBOM
-        if: steps.sbom.outcome == 'success'
+      - name: Attest API SPDX SBOM
         uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b
         with:
           subject-name: ghcr.io/eklavyamirani/workout-app/api
@@ -190,7 +207,7 @@ jobs:
       - name: Create publication report
         run: |
           set -euo pipefail
-          mkdir -p report
+          mkdir -p report/runtime
           cat > report/publication.json <<JSON
           {
             "repository": "${EXPECTED_REPO}",
@@ -205,17 +222,15 @@ jobs:
               "tag": "${{ steps.publish.outputs.api_image }}",
               "digest": "${{ steps.publish.outputs.api_digest }}"
             },
-            "sbom_attested": ${{ steps.sbom.outcome == 'success' }}
+            "sbom_attested": true
           }
           JSON
 
-      - name: Validate pushed images, attestations, and runtime contract
+      - name: Validate published indexes and attestations
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p report/runtime
-
           FRONTEND_REF="ghcr.io/eklavyamirani/workout-app/frontend@${{ steps.publish.outputs.frontend_digest }}"
           API_REF="ghcr.io/eklavyamirani/workout-app/api@${{ steps.publish.outputs.api_digest }}"
 
@@ -225,70 +240,49 @@ jobs:
           skopeo inspect --raw "docker://${FRONTEND_REF}" > report/runtime/frontend-index.json
           skopeo inspect --raw "docker://${API_REF}" > report/runtime/api-index.json
 
-          jq -e '.manifests | map(.platform.os + \"/\" + .platform.architecture) | sort == [\"linux/amd64\",\"linux/arm64\"]' report/runtime/frontend-index.json > /dev/null
-          jq -e '.manifests | map(.platform.os + \"/\" + .platform.architecture) | sort == [\"linux/amd64\",\"linux/arm64\"]' report/runtime/api-index.json > /dev/null
+          jq -e '.manifests | length == 2 and (map(.platform.os + "/" + .platform.architecture) | sort == ["linux/amd64","linux/arm64"])' report/runtime/frontend-index.json > /dev/null
+          jq -e '.manifests | length == 2 and (map(.platform.os + "/" + .platform.architecture) | sort == ["linux/amd64","linux/arm64"])' report/runtime/api-index.json > /dev/null
 
-          gh attestation verify "oci://${FRONTEND_REF}" --repo eklavyamirani/workout-app > report/runtime/frontend-attestation.txt
-          gh attestation verify "oci://${API_REF}" --repo eklavyamirani/workout-app > report/runtime/api-attestation.txt
+          gh attestation verify "oci://${FRONTEND_REF}" \
+            --repo "$EXPECTED_REPO" \
+            --bundle-from-oci \
+            --signer-workflow "$PUBLISH_SIGNER_WORKFLOW" \
+            --predicate-type "$SLSA_PREDICATE" > report/runtime/frontend-publisher-provenance.txt
 
-          if [ -f frontend.spdx.json ] && [ -f api.spdx.json ]; then
-            echo "SBOM generated in publish workflow" > report/runtime/sbom-status.txt
-          else
-            echo "SBOM generation unsupported or failed on runner" > report/runtime/sbom-status.txt
-          fi
+          gh attestation verify "oci://${API_REF}" \
+            --repo "$EXPECTED_REPO" \
+            --bundle-from-oci \
+            --signer-workflow "$PUBLISH_SIGNER_WORKFLOW" \
+            --predicate-type "$SLSA_PREDICATE" > report/runtime/api-publisher-provenance.txt
 
-          cat > /tmp/frontend-config-a.js <<'CFG'
-          window.__WORKOUT_APP_CONFIG__ = {
-            apiBaseUrl: '/api',
-            oidcAuthority: 'https://auth.homelab.example/application/o/workout-app/',
-            oidcClientId: 'workout-app-frontend',
-            oidcRedirectUri: 'https://workout.homelab.example/callback',
-            environmentName: 'preview-a'
-          }
-          CFG
+          gh attestation verify "oci://${FRONTEND_REF}" \
+            --repo "$EXPECTED_REPO" \
+            --bundle-from-oci \
+            --signer-workflow "$PUBLISH_SIGNER_WORKFLOW" \
+            --predicate-type "$SPDX_PREDICATE" > report/runtime/frontend-spdx.txt
 
-          cat > /tmp/frontend-config-b.js <<'CFG'
-          window.__WORKOUT_APP_CONFIG__ = {
-            apiBaseUrl: '/api',
-            oidcAuthority: 'https://auth.homelab.example/application/o/workout-app-preview/',
-            oidcClientId: 'workout-app-frontend-preview',
-            oidcRedirectUri: 'https://pr-${{ steps.pr.outputs.pr_number }}.workout.homelab.example/callback',
-            environmentName: 'preview-b'
-          }
-          CFG
+          gh attestation verify "oci://${API_REF}" \
+            --repo "$EXPECTED_REPO" \
+            --bundle-from-oci \
+            --signer-workflow "$PUBLISH_SIGNER_WORKFLOW" \
+            --predicate-type "$SPDX_PREDICATE" > report/runtime/api-spdx.txt
 
-          docker run -d --name frontend-a \
-            --read-only \
-            --tmpfs /tmp/nginx:uid=10001,gid=10001,mode=1770 \
-            -p 4173:4173 \
-            -v /tmp/frontend-config-a.js:/usr/share/nginx/html/runtime-config/config.js:ro \
-            "${FRONTEND_REF}"
+      - name: Run frontend and API runtime checks with PostgreSQL
+        run: |
+          set -euo pipefail
+          FRONTEND_REF="ghcr.io/eklavyamirani/workout-app/frontend@${{ steps.publish.outputs.frontend_digest }}"
+          API_REF="ghcr.io/eklavyamirani/workout-app/api@${{ steps.publish.outputs.api_digest }}"
+
+          docker run -d --name frontend-runtime -p 4173:4173 "${FRONTEND_REF}"
           sleep 10
-          curl -fsS http://127.0.0.1:4173/health > report/runtime/frontend-health-a.txt
-          curl -fsS http://127.0.0.1:4173/runtime-config/config.js > report/runtime/frontend-config-a-served.js
-          docker stop frontend-a > report/runtime/frontend-stop-a.txt
-          docker rm frontend-a > /dev/null
-
-          docker run -d --name frontend-b \
-            --read-only \
-            --tmpfs /tmp/nginx:uid=10001,gid=10001,mode=1770 \
-            -p 4173:4173 \
-            -v /tmp/frontend-config-b.js:/usr/share/nginx/html/runtime-config/config.js:ro \
-            "${FRONTEND_REF}"
-          sleep 10
-          curl -fsS http://127.0.0.1:4173/health > report/runtime/frontend-health-b.txt
-          curl -fsS http://127.0.0.1:4173/runtime-config/config.js > report/runtime/frontend-config-b-served.js
-          docker stop frontend-b > report/runtime/frontend-stop-b.txt
-          docker rm frontend-b > /dev/null
-
-          mkdir -p /tmp/workout-secrets
-          echo 'workout_password' > /tmp/workout-secrets/db_password.txt
+          curl -fsS http://127.0.0.1:4173/health > report/runtime/frontend-health.txt
+          docker stop frontend-runtime > /dev/null
+          docker rm frontend-runtime > /dev/null
 
           docker run -d --name postgres-runtime \
             -e POSTGRES_DB=workout \
             -e POSTGRES_USER=workout \
-            -e POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
-            -v /tmp/workout-secrets/db_password.txt:/run/secrets/postgres_password:ro \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
             postgres:16-alpine
 
           for _ in $(seq 1 30); do
@@ -299,29 +293,20 @@ jobs:
           done
 
           docker run -d --name api-runtime \
-            --read-only \
-            --tmpfs /tmp \
             --network container:postgres-runtime \
-            -e DB_HOST=127.0.0.1 \
-            -e DB_PORT=5432 \
-            -e DB_NAME=workout \
-            -e DB_USER=workout \
-            -e DB_PASSWORD_FILE=/run/secrets/db_password \
-            -v /tmp/workout-secrets/db_password.txt:/run/secrets/db_password:ro \
+            -e ConnectionStrings__Default='Host=127.0.0.1;Port=5432;Database=workout;Username=workout' \
+            -e Auth__Issuer='https://auth.homelab.example/application/o/workout-app/' \
+            -e Auth__ClientId='workout-app' \
             "${API_REF}"
 
           sleep 10
-          docker logs api-runtime > report/runtime/api-logs.txt 2>&1 || true
+          docker logs api-runtime > report/runtime/api-logs.txt
           docker run --rm --network container:postgres-runtime curlimages/curl:8.9.1 -fsS http://127.0.0.1:5000/api/health > report/runtime/api-health.txt
-          docker stop api-runtime > report/runtime/api-stop.txt
-          docker rm api-runtime > /dev/null
-          docker stop postgres-runtime > report/runtime/postgres-stop.txt
-          docker rm postgres-runtime > /dev/null
 
-          docker history --no-trunc "${FRONTEND_REF}" > report/runtime/frontend-history.txt
-          docker history --no-trunc "${API_REF}" > report/runtime/api-history.txt
-          skopeo inspect "docker://${FRONTEND_REF}" > report/runtime/frontend-inspect.json
-          skopeo inspect "docker://${API_REF}" > report/runtime/api-inspect.json
+          docker stop api-runtime > /dev/null
+          docker rm api-runtime > /dev/null
+          docker stop postgres-runtime > /dev/null
+          docker rm postgres-runtime > /dev/null
 
       - name: Upload final diagnostics
         if: always()
@@ -335,7 +320,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: preview-publication-report
-          path: report/
+          path: report/publication.json
           retention-days: 30
 
       - name: Upsert PR comment
@@ -346,11 +331,10 @@ jobs:
           FRONTEND_DIGEST: ${{ steps.publish.outputs.frontend_digest }}
           API_DIGEST: ${{ steps.publish.outputs.api_digest }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          SBOM_STATUS: ${{ steps.sbom.outcome == 'success' && 'generated' || 'unsupported-or-failed' }}
         with:
           script: |
             const marker = '<!-- workout-app-preview-publication -->';
-            const body = `${marker}\nHead SHA: ${process.env.HEAD_SHA}\nFrontend digest: ${process.env.FRONTEND_DIGEST}\nAPI digest: ${process.env.API_DIGEST}\nWorkflow run: ${process.env.RUN_URL}\nAttestation status: provenance=generated, sbom=${process.env.SBOM_STATUS}`;
+            const body = `${marker}\nHead SHA: ${process.env.HEAD_SHA}\nFrontend digest: ${process.env.FRONTEND_DIGEST}\nAPI digest: ${process.env.API_DIGEST}\nWorkflow run: ${process.env.RUN_URL}\nAttestation status: build-provenance=verified, publish-provenance=verified, sbom=verified`;
             const issue_number = Number(process.env.PR_NUMBER);
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,

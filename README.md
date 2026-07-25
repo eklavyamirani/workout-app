@@ -94,8 +94,4 @@ The E2E test suite covers:
 - **Data Persistence** (6 tests) - localStorage, page reloads, workout history
 
 ## Deployment
-See `deploy/README.md` for homelab container deployment guidance.
-
-- Frontend runtime config is mounted from `/runtime-config/config.js` (see `docs/runtime-config.md`).
-- API secrets are file-based (`DB_PASSWORD_FILE`), not plain-text secret env vars.
-- Images are published to GHCR and consumed by digest in the homelab runtime.
+See `deploy/README.md` for container build/run instructions and zero-downtime rollout guidance. Configurable via env vars (e.g., `PORT`, `DEPLOYMENT_MODE`, secrets injected at runtime). Deployment assets live under `deploy/`.

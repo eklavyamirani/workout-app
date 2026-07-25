@@ -135,4 +135,4 @@ async function getAuthentikToken(): Promise<string | null> {
   }
 }
 
-export { test as expect } from '@playwright/test';
+export { expect } from '@playwright/test';

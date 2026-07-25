@@ -18,12 +18,13 @@ public class SyncPushTests : IClassFixture<AppFactory>
     private static PushRequest MakePushRequest(params SyncChange[] changes) =>
         new() { Changes = changes.ToList() };
 
-    private static SyncChange MakeChange(string key, object value, int version = 0, bool deleted = false) =>
+    private static SyncChange MakeChange(
+        string key, object value, int version = 0, bool deleted = false, string? updatedAt = null) =>
         new()
         {
             Key = key,
             Value = JsonSerializer.SerializeToElement(value),
-            UpdatedAt = DateTime.UtcNow.ToString("o"),
+            UpdatedAt = updatedAt ?? DateTime.UtcNow.ToString("o"),
             Version = version,
             Deleted = deleted
         };
@@ -133,5 +134,42 @@ public class SyncPushTests : IClassFixture<AppFactory>
             Assert.Equal("ok", r.Status);
             Assert.Equal(1, r.Version);
         });
+    }
+
+    [Fact]
+    public async Task Push_MalformedTimestamp_ReturnsErrorItem_WithoutFailingBatch()
+    {
+        var client = _factory.CreateAuthenticatedClient("push-badtime@test.com");
+
+        var bad = MakeChange("test:bad-time", new { a = 1 }, updatedAt: "not-a-timestamp");
+
+        var request = MakePushRequest(bad, MakeChange("test:good-time", new { b = 2 }));
+
+        var response = await client.PostAsJsonAsync("/api/sync/push", request);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<PushResponse>();
+        Assert.NotNull(result);
+        Assert.Equal("error", result.Results.Single(r => r.Key == "test:bad-time").Status);
+        Assert.Equal("ok", result.Results.Single(r => r.Key == "test:good-time").Status);
+    }
+
+    [Fact]
+    public async Task Push_UsesServerTimestamp_ForPullWatermark()
+    {
+        var client = _factory.CreateAuthenticatedClient("push-clockskew@test.com");
+
+        // Simulate an offline edit made long ago and only pushed now.
+        var stale = MakeChange(
+            "test:clock-skew", new { a = 1 }, updatedAt: DateTime.UtcNow.AddDays(-7).ToString("o"));
+
+        var watermark = DateTime.UtcNow.AddMinutes(-1).ToString("o");
+        await client.PostAsJsonAsync("/api/sync/push", MakePushRequest(stale));
+
+        var pull = await client.GetFromJsonAsync<PullResponse>(
+            $"/api/sync/pull?since={Uri.EscapeDataString(watermark)}");
+
+        Assert.NotNull(pull);
+        Assert.Contains(pull.Changes, c => c.Key == "test:clock-skew");
     }
 }

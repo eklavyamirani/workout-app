@@ -29,3 +29,6 @@ build/
 .cache/
 .eslintcache
 .vercel
+
+# Local deployment secrets (never commit)
+deploy/.env

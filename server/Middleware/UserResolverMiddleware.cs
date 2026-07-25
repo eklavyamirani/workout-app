@@ -33,10 +33,11 @@ public class UserResolverMiddleware
         context.Items["User"] = new UserInfo(userId, email);
         context.Items["DbConnection"] = conn;
 
-        // SET doesn't support parameterized queries in PostgreSQL.
-        // The userId is a Guid from our own database, not user input, so string interpolation is safe.
+        // set_config with is_local=false sets the value for the whole session, which
+        // survives outside an explicit transaction block (SET LOCAL would be a no-op here).
         await using var setCmd = new NpgsqlCommand(
-            $"SET LOCAL app.current_user_id = '{userId}'", conn);
+            "SELECT set_config('app.current_user_id', @id, false)", conn);
+        setCmd.Parameters.AddWithValue("id", userId.ToString());
         await setCmd.ExecuteNonQueryAsync();
 
         await _next(context);

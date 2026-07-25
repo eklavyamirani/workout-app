@@ -148,6 +148,36 @@ export async function syncPull(): Promise<void> {
   window.dispatchEvent(new CustomEvent('sync:complete'));
 }
 
+/**
+ * Merges two arrays without duplicating entries. `new Set` only dedups primitives, so
+ * arrays of objects (e.g. `activities:{programId}`) are deduped by their `id` field and
+ * fall back to structural equality when no usable identity is present.
+ */
+function mergeArrays(local: unknown[], remote: unknown[]): unknown[] {
+  const identity = (item: unknown): string => {
+    if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+      const id = (item as { id?: unknown }).id;
+      if (typeof id === 'string' || typeof id === 'number') {
+        return `id:${id}`;
+      }
+    }
+    if (typeof item === 'object' && item !== null) {
+      return `json:${JSON.stringify(item)}`;
+    }
+    return `${typeof item}:${String(item)}`;
+  };
+
+  const merged: unknown[] = [];
+  const seen = new Set<string>();
+  for (const item of [...local, ...remote]) {
+    const key = identity(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  return merged;
+}
+
 // --- Initial sync (for migration from anonymous to authenticated) ---
 
 export async function performInitialSync(): Promise<void> {
@@ -179,7 +209,7 @@ export async function performInitialSync(): Promise<void> {
         // For array-type keys like programs:list, merge instead of overwrite
         const localValue = localGet(result.key);
         if (Array.isArray(localValue) && Array.isArray(result.value)) {
-          const merged = [...new Set([...localValue, ...(result.value as unknown[])])];
+          const merged = mergeArrays(localValue, result.value as unknown[]);
           localSet(result.key, merged);
           // Mark as dirty so merged value gets pushed
           setMeta(result.key, {

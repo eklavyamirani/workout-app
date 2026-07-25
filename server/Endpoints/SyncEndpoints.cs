@@ -1,6 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
 using Npgsql;
-using NpgsqlTypes;
 using server.Models;
 
 namespace server.Endpoints;
@@ -25,11 +25,17 @@ public static class SyncEndpoints
 
         var results = new List<PushResultItem>();
 
+        // The whole batch is applied atomically so a malformed item cannot leave the
+        // client unable to tell which of its changes were persisted.
+        await using var transaction = await conn.BeginTransactionAsync();
+
         foreach (var change in request.Changes)
         {
-            var result = await ProcessPushChange(conn, user.Id, change);
+            var result = await ProcessPushChange(conn, transaction, user.Id, change);
             results.Add(result);
         }
+
+        await transaction.CommitAsync();
 
         return Results.Ok(new PushResponse
         {
@@ -39,36 +45,74 @@ public static class SyncEndpoints
     }
 
     private static async Task<PushResultItem> ProcessPushChange(
-        NpgsqlConnection conn, Guid userId, SyncChange change)
+        NpgsqlConnection conn, NpgsqlTransaction transaction, Guid userId, SyncChange change)
     {
+        if (string.IsNullOrEmpty(change.Key))
+        {
+            return new PushResultItem { Key = change.Key ?? string.Empty, Status = "error", Version = 0 };
+        }
+
+        // The client clock is untrusted input: reject unparsable values for this item
+        // instead of throwing and failing the whole request.
+        if (!TryParseClientTimestamp(change.UpdatedAt, out var clientUpdatedAt))
+        {
+            return new PushResultItem { Key = change.Key, Status = "error", Version = change.Version };
+        }
+
         if (change.Version == 0)
         {
             // New key — try insert
-            return await TryInsert(conn, userId, change);
+            return await TryInsert(conn, transaction, userId, change, clientUpdatedAt);
         }
         else
         {
             // Existing key — try update with version check
-            return await TryUpdate(conn, userId, change);
+            return await TryUpdate(conn, transaction, userId, change, clientUpdatedAt);
         }
     }
 
+    private static bool TryParseClientTimestamp(string? value, out DateTime parsed)
+    {
+        parsed = default;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (!DateTime.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var result))
+        {
+            return false;
+        }
+
+        parsed = result.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(result, DateTimeKind.Utc)
+            : result.ToUniversalTime();
+        return true;
+    }
+
     private static async Task<PushResultItem> TryInsert(
-        NpgsqlConnection conn, Guid userId, SyncChange change)
+        NpgsqlConnection conn, NpgsqlTransaction transaction, Guid userId, SyncChange change,
+        DateTime clientUpdatedAt)
     {
         var valueJson = change.Value.GetRawText();
 
+        // updated_at is assigned server-side (now()) so that a client with a skewed or
+        // stale clock cannot write a row behind another device's pull watermark.
         // Use ON CONFLICT to handle race conditions where the key already exists
         await using var cmd = new NpgsqlCommand(@"
-            INSERT INTO user_data (user_id, key, value, version, updated_at, deleted)
-            VALUES (@userId, @key, @value::jsonb, 1, @updatedAt, @deleted)
+            INSERT INTO user_data (user_id, key, value, version, updated_at, client_updated_at, deleted)
+            VALUES (@userId, @key, @value::jsonb, 1, now(), @clientUpdatedAt, @deleted)
             ON CONFLICT (user_id, key) DO NOTHING
-            RETURNING version", conn);
+            RETURNING version", conn, transaction);
 
         cmd.Parameters.AddWithValue("userId", userId);
         cmd.Parameters.AddWithValue("key", change.Key);
         cmd.Parameters.AddWithValue("value", valueJson);
-        cmd.Parameters.AddWithValue("updatedAt", DateTime.Parse(change.UpdatedAt).ToUniversalTime());
+        cmd.Parameters.AddWithValue("clientUpdatedAt", clientUpdatedAt);
         cmd.Parameters.AddWithValue("deleted", change.Deleted);
 
         var result = await cmd.ExecuteScalarAsync();
@@ -78,11 +122,12 @@ public static class SyncEndpoints
         }
 
         // Key already exists — return conflict with current value
-        return await GetConflictResult(conn, userId, change.Key);
+        return await GetConflictResult(conn, transaction, userId, change.Key);
     }
 
     private static async Task<PushResultItem> TryUpdate(
-        NpgsqlConnection conn, Guid userId, SyncChange change)
+        NpgsqlConnection conn, NpgsqlTransaction transaction, Guid userId, SyncChange change,
+        DateTime clientUpdatedAt)
     {
         var valueJson = change.Value.GetRawText();
 
@@ -90,15 +135,16 @@ public static class SyncEndpoints
             UPDATE user_data
             SET value = @value::jsonb,
                 version = version + 1,
-                updated_at = @updatedAt,
+                updated_at = now(),
+                client_updated_at = @clientUpdatedAt,
                 deleted = @deleted
             WHERE user_id = @userId AND key = @key AND version = @expectedVersion
-            RETURNING version", conn);
+            RETURNING version", conn, transaction);
 
         cmd.Parameters.AddWithValue("userId", userId);
         cmd.Parameters.AddWithValue("key", change.Key);
         cmd.Parameters.AddWithValue("value", valueJson);
-        cmd.Parameters.AddWithValue("updatedAt", DateTime.Parse(change.UpdatedAt).ToUniversalTime());
+        cmd.Parameters.AddWithValue("clientUpdatedAt", clientUpdatedAt);
         cmd.Parameters.AddWithValue("deleted", change.Deleted);
         cmd.Parameters.AddWithValue("expectedVersion", change.Version);
 
@@ -109,15 +155,15 @@ public static class SyncEndpoints
         }
 
         // Version mismatch — return conflict
-        return await GetConflictResult(conn, userId, change.Key);
+        return await GetConflictResult(conn, transaction, userId, change.Key);
     }
 
     private static async Task<PushResultItem> GetConflictResult(
-        NpgsqlConnection conn, Guid userId, string key)
+        NpgsqlConnection conn, NpgsqlTransaction transaction, Guid userId, string key)
     {
         await using var cmd = new NpgsqlCommand(@"
             SELECT value, version FROM user_data
-            WHERE user_id = @userId AND key = @key", conn);
+            WHERE user_id = @userId AND key = @key", conn, transaction);
 
         cmd.Parameters.AddWithValue("userId", userId);
         cmd.Parameters.AddWithValue("key", key);
@@ -148,10 +194,14 @@ public static class SyncEndpoints
         var conn = context.Items["DbConnection"] as NpgsqlConnection;
         if (conn is null) return Results.StatusCode(500);
 
-        var sinceDate = DateTime.MinValue.ToUniversalTime();
-        if (!string.IsNullOrEmpty(since) && DateTime.TryParse(since, out var parsed))
+        var sinceDate = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+        if (!string.IsNullOrEmpty(since))
         {
-            sinceDate = parsed.ToUniversalTime();
+            if (!TryParseClientTimestamp(since, out var parsed))
+            {
+                return Results.BadRequest(new { error = "Invalid 'since' timestamp" });
+            }
+            sinceDate = parsed;
         }
 
         await using var cmd = new NpgsqlCommand(@"

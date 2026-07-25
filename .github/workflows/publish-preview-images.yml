@@ -163,7 +163,7 @@ jobs:
             expected_digest="$2"
             out_file="report/runtime/${component}-build-provenance.json"
 
-            gh attestation verify "artifacts/oci/${component}.oci.tar" \
+            gh attestation verify "report/runtime/${component}-index-local.json" \
               --repo "$EXPECTED_REPO" \
               --signer-workflow "$BUILD_SIGNER_WORKFLOW" \
               --predicate-type "$SLSA_PREDICATE" \

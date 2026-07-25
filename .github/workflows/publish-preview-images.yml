@@ -122,7 +122,7 @@ jobs:
             fi
 
             index_json="report/runtime/${component}-index-local.json"
-            skopeo inspect --raw "oci-archive:artifacts/oci/${component}.oci.tar" > "$index_json"
+            tar -xOf "artifacts/oci/${component}.oci.tar" index.json > "$index_json"
             index_digest="sha256:$(sha256sum "$index_json" | awk '{print $1}')"
             echo "${component}_index_digest=${index_digest}" >> "$GITHUB_OUTPUT"
 
@@ -171,8 +171,9 @@ jobs:
               --format json > "$out_file"
 
             expected_sha="${expected_digest#sha256:}"
-            jq -e --arg expected_sha "$expected_sha" '
-              [.. | objects | select(has("sha256")) | .sha256] | index($expected_sha) != null
+            jq -e --arg expected_sha "$expected_sha" --arg expected_name "ghcr.io/${EXPECTED_REPO}/${component}" '
+              [.. | objects | select(has("subject")) | .subject[]? |
+                select((.name // "") == $expected_name and (.digest.sha256 // "") == $expected_sha)] | length > 0
             ' "$out_file" > /dev/null
           }
 
@@ -188,8 +189,8 @@ jobs:
           FRONTEND_LOCAL_REF="localhost/workout-app-frontend:validate-${HEAD_SHA}"
           API_LOCAL_REF="localhost/workout-app-api:validate-${HEAD_SHA}"
 
-          skopeo copy --all "oci-archive:artifacts/oci/frontend.oci.tar" "docker-daemon:${FRONTEND_LOCAL_REF}"
-          skopeo copy --all "oci-archive:artifacts/oci/api.oci.tar" "docker-daemon:${API_LOCAL_REF}"
+          skopeo copy --override-os linux --override-arch amd64 "oci-archive:artifacts/oci/frontend.oci.tar" "docker-daemon:${FRONTEND_LOCAL_REF}"
+          skopeo copy --override-os linux --override-arch amd64 "oci-archive:artifacts/oci/api.oci.tar" "docker-daemon:${API_LOCAL_REF}"
 
           cat > runtime/runtime-config-a.json <<'JSON'
           {
@@ -255,12 +256,18 @@ jobs:
             -v "$PWD/runtime/postgres-password.txt:/run/secrets/postgres-password:ro" \
             postgres:16-alpine
 
+          pg_ready=0
           for _ in $(seq 1 30); do
             if docker exec postgres-runtime pg_isready -U workout -d workout; then
+              pg_ready=1
               break
             fi
             sleep 2
           done
+          if [ "$pg_ready" -ne 1 ]; then
+            echo "PostgreSQL did not become ready after retries" >&2
+            exit 1
+          fi
 
           docker run -d --name api-runtime \
             --network container:postgres-runtime \
@@ -282,12 +289,18 @@ jobs:
             fi
           done
 
+          api_ready=0
           for _ in $(seq 1 30); do
             if docker run --rm --network container:postgres-runtime curlimages/curl:8.9.1 -fsS http://127.0.0.1:5000/api/health > report/runtime/api-health.txt; then
+              api_ready=1
               break
             fi
             sleep 2
           done
+          if [ "$api_ready" -ne 1 ]; then
+            echo "API did not become ready after retries" >&2
+            exit 1
+          fi
 
           docker logs api-runtime > report/runtime/api-logs.txt
 
@@ -358,6 +371,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: preview-validated-sbom
+          run-id: ${{ github.run_id }}
           path: report/sbom
           github-token: ${{ github.token }}
 

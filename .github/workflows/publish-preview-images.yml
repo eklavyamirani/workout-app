@@ -303,7 +303,10 @@ jobs:
             -v "$PWD/runtime/postgres-password.txt:/run/secrets/postgres-password:ro" \
             "$API_LOCAL_REF"
 
-          for c in frontend-runtime-a frontend-runtime-b postgres-runtime api-runtime; do
+          # Only the images this repository builds and publishes are subject to the
+          # non-root gate. postgres-runtime is unmodified upstream postgres:16-alpine,
+          # test scaffolding that declares no image user and drops privileges internally.
+          for c in frontend-runtime-a frontend-runtime-b api-runtime; do
             runtime_user=$(docker inspect -f '{{.Config.User}}' "$c")
             if [ -z "$runtime_user" ] || [ "$runtime_user" = "root" ] || [ "$runtime_user" = "0" ] || [ "$runtime_user" = "0:0" ]; then
               echo "Container ${c} is not running as a non-root user" >&2

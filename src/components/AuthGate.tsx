@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dumbbell } from 'lucide-react';
 import { getAuthMode, isAuthenticated, isAnonymous, enterAnonymousMode } from '../storage/auth';
-import { login, handleCallback, isOidcConfigured, isTokenExpired } from '../storage/oidc';
+import { login, handleCallback, isOidcConfigured, isTokenExpired, refreshAccessToken } from '../storage/oidc';
 import { performInitialSync, syncPull } from '../storage/sync';
 
 interface AuthGateProps {
@@ -44,8 +44,14 @@ export function AuthGate({ children }: AuthGateProps) {
 
       // Check existing auth state
       const mode = getAuthMode();
-      if (mode === 'authenticated' && !isTokenExpired()) {
-        setState('app');
+      if (mode === 'authenticated') {
+        // An expired access token is not a sign-out: try the stored refresh token first
+        // so users are not bounced back to the gate every time the token lifetime ends.
+        if (!isTokenExpired() || (await refreshAccessToken())) {
+          setState('app');
+          return;
+        }
+        setState('gate');
       } else if (mode === 'anonymous') {
         setState('app');
       } else {

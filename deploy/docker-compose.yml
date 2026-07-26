@@ -20,17 +20,18 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-      args:
-        VITE_DEPLOYMENT_MODE: ${DEPLOYMENT_MODE-production}
-        VITE_OIDC_AUTHORITY: ${VITE_OIDC_AUTHORITY-http://localhost/application/o/workout-app}
-        VITE_OIDC_CLIENT_ID: ${VITE_OIDC_CLIENT_ID-workout-app}
-        VITE_OIDC_REDIRECT_URI: ${VITE_OIDC_REDIRECT_URI-http://localhost/}
-    image: workout-app:latest
+    image: workout-app-frontend:local
     restart: unless-stopped
-    environment:
-      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE-production}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+      - /var/cache/nginx:rw,noexec,nosuid,size=32m
+      - /var/run:rw,noexec,nosuid,size=8m
+    volumes:
+      # Non-secret, per-deployment configuration. The image itself is environment-agnostic.
+      - ./runtime-config.json:/usr/share/nginx/html/runtime-config.json:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsSL http://localhost:4173/ -o /dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:4173/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -43,17 +44,33 @@ services:
     build:
       context: ../server
       dockerfile: Dockerfile
+    image: workout-app-api:local
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+      - /app/tmp:rw,noexec,nosuid,size=32m
     environment:
-      ConnectionStrings__Default: "Host=db;Database=workout;Username=workout;Password=${DB_PASSWORD-workout}"
+      # Connection information never contains the password; it is read from a mounted file.
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=workout;Username=workout_app"
+      ConnectionStrings__Default__PasswordFile: /run/secrets/app-role-password
+      # Schema/role bootstrap runs with an administrative connection; the runtime
+      # connection above is a non-superuser role so RLS is enforced.
+      ConnectionStrings__Admin: "Host=db;Port=5432;Database=workout;Username=workout"
+      ConnectionStrings__Admin__PasswordFile: /run/secrets/postgres-password
+      Database__AppRolePasswordFile: /run/secrets/app-role-password
       Auth__Issuer: "http://localhost/application/o/workout-app/"
       Auth__MetadataAddress: "http://authentik-server:9000/application/o/workout-app/.well-known/openid-configuration"
       Auth__ClientId: "workout-app"
+    secrets:
+      - postgres-password
+      - app-role-password
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsSL http://localhost:5000/api/health -o /dev/null || exit 1"]
+      # The API image intentionally ships no curl/wget; use bash's /dev/tcp instead.
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5000 && printf 'GET /api/health HTTP/1.0\r\n\r\n' >&3 && grep -q '\"status\":\"healthy\"' <&3"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -68,7 +85,9 @@ services:
     environment:
       POSTGRES_DB: workout
       POSTGRES_USER: workout
-      POSTGRES_PASSWORD: ${DB_PASSWORD-workout}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+    secrets:
+      - postgres-password
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -137,6 +156,12 @@ services:
     restart: unless-stopped
     volumes:
       - authentik-redis:/data
+
+secrets:
+  postgres-password:
+    file: ./secrets/postgres-password
+  app-role-password:
+    file: ./secrets/app-role-password
 
 volumes:
   pgdata:

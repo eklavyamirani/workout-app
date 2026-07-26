@@ -1,0 +1,553 @@
+name: Publish preview images
+
+on:
+  workflow_run:
+    workflows: [Build preview images]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == 'eklavyamirani/workout-app'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: preview-validate-pr-${{ github.event.workflow_run.pull_requests[0].number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      actions: read
+    env:
+      EXPECTED_REPO: eklavyamirani/workout-app
+      BUILD_SIGNER_WORKFLOW: eklavyamirani/workout-app/.github/workflows/build-preview-images.yml
+      SLSA_PREDICATE: https://slsa.dev/provenance/v1
+    outputs:
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      frontend_index_digest: ${{ steps.inspect.outputs.frontend_index_digest }}
+      api_index_digest: ${{ steps.inspect.outputs.api_index_digest }}
+    steps:
+      - name: Validate workflow_run payload
+        run: |
+          set -euo pipefail
+          test "${{ github.event.workflow_run.event }}" = "pull_request"
+          test "${{ github.event.workflow_run.head_repository.full_name }}" = "${EXPECTED_REPO}"
+
+      - name: Capture PR metadata
+        id: pr
+        run: |
+          set -euo pipefail
+          PR_NUMBER='${{ github.event.workflow_run.pull_requests[0].number }}'
+          HEAD_SHA='${{ github.event.workflow_run.head_sha }}'
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid PR number: $PR_NUMBER" >&2
+            exit 1
+          fi
+          if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid head SHA format: $HEAD_SHA" >&2
+            exit 1
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Download OCI layouts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: preview-oci-layouts
+          run-id: ${{ github.event.workflow_run.id }}
+          path: artifacts/oci
+          github-token: ${{ github.token }}
+
+      - name: Download metadata
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: preview-build-metadata
+          run-id: ${{ github.event.workflow_run.id }}
+          path: artifacts/metadata
+          github-token: ${{ github.token }}
+
+      - name: Validate artifact names from source run
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const run_id = context.payload.workflow_run.id;
+            const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id,
+              per_page: 100,
+            });
+            const expected = new Set(['preview-oci-layouts', 'preview-build-metadata', 'preview-build-diagnostics']);
+            for (const artifact of data.artifacts) {
+              if (!expected.has(artifact.name)) {
+                core.setFailed(`Unexpected artifact from untrusted run: ${artifact.name}`);
+                return;
+              }
+            }
+
+      - name: Validate downloaded artifacts
+        run: |
+          set -euo pipefail
+          test -f artifacts/oci/frontend.oci.tar
+          test -f artifacts/oci/api.oci.tar
+          test -f artifacts/metadata/frontend.json
+          test -f artifacts/metadata/api.json
+
+      - name: Install skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+      - name: Inspect OCI layouts and labels
+        id: inspect
+        run: |
+          set -euo pipefail
+          mkdir -p report/runtime
+
+          PR_NUMBER='${{ steps.pr.outputs.pr_number }}'
+          HEAD_SHA='${{ steps.pr.outputs.head_sha }}'
+          EXPECTED_SOURCE="https://github.com/${EXPECTED_REPO}"
+          EXPECTED_VERSION="pr-${PR_NUMBER}-${HEAD_SHA}"
+
+          for component in frontend api; do
+            if [ "$component" = "frontend" ]; then
+              expected_title="workout-app-frontend"
+            else
+              expected_title="workout-app-api"
+            fi
+
+            # The uploaded OCI archive is the pristine buildx export: its root index.json is a
+            # single-entry index pointing at the real multi-platform image index blob. The
+            # digest that is published to the registry is the digest of that nested blob.
+            # The archive must not be rewritten to make the root index the image index --
+            # doing so drops the ref-name annotation and makes skopeo reject the layout with
+            # "more than one image in oci, choose an image".
+            root_index="report/runtime/${component}-root-index.json"
+            tar -xOf "artifacts/oci/${component}.oci.tar" index.json > "$root_index"
+            index_digest="$(jq -r '.manifests | map(select(.mediaType == "application/vnd.oci.image.index.v1+json")) | .[0].digest // empty' "$root_index")"
+            if [ -z "$index_digest" ]; then
+              echo "${component}: OCI layout does not contain a multi-platform image index" >&2
+              exit 1
+            fi
+
+            index_json="report/runtime/${component}-index-local.json"
+            tar -xOf "artifacts/oci/${component}.oci.tar" "blobs/sha256/${index_digest#sha256:}" > "$index_json"
+            computed_digest="sha256:$(sha256sum "$index_json" | awk '{print $1}')"
+            if [ "$computed_digest" != "$index_digest" ]; then
+              echo "${component}: image index blob digest does not match its descriptor" >&2
+              exit 1
+            fi
+            echo "${component}_index_digest=${index_digest}" >> "$GITHUB_OUTPUT"
+
+            jq -e '
+              (.manifests | length) == 2 and
+              ([.manifests[] | ((.platform.os // "") + "/" + (.platform.architecture // ""))] | sort == ["linux/amd64", "linux/arm64"]) and
+              ([.manifests[] | select((.platform.os // "") == "unknown" or (.platform.architecture // "") == "unknown")] | length == 0)
+            ' "$index_json" > /dev/null
+
+            for arch in amd64 arm64; do
+              config_json="report/runtime/${component}-config-${arch}.json"
+              skopeo inspect --config --override-os linux --override-arch "$arch" "oci-archive:artifacts/oci/${component}.oci.tar" > "$config_json"
+
+              jq -e --arg expected_source "$EXPECTED_SOURCE" --arg expected_revision "$HEAD_SHA" --arg expected_version "$EXPECTED_VERSION" --arg expected_title "$expected_title" '
+                .config.Labels["org.opencontainers.image.source"] == $expected_source and
+                .config.Labels["org.opencontainers.image.revision"] == $expected_revision and
+                .config.Labels["org.opencontainers.image.version"] == $expected_version and
+                .config.Labels["org.opencontainers.image.title"] == $expected_title
+              ' "$config_json" > /dev/null
+
+              user_value=$(jq -r '.config.User // ""' "$config_json")
+              if [ -z "$user_value" ] || [ "$user_value" = "root" ] || [ "$user_value" = "0" ] || [ "$user_value" = "0:0" ]; then
+                echo "${component}/${arch} is not configured as a non-root image user" >&2
+                exit 1
+              fi
+            done
+          done
+
+      # `--source-digest` is not used: on `pull_request` GITHUB_SHA is the ephemeral merge
+      # commit and on `workflow_run` it is the default-branch tip, so a Sigstore-bound source
+      # digest can never equal the PR head SHA. Builder identity is proven by
+      # --repo/--signer-workflow, and the binding to the exact head commit is proven by the
+      # org.opencontainers.image.revision label verified above.
+      - name: Verify build provenance attestations against index digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p report/runtime
+
+          verify_component() {
+            component="$1"
+            expected_digest="$2"
+            out_file="report/runtime/${component}-build-provenance.json"
+
+            gh attestation verify "report/runtime/${component}-index-local.json" \
+              --repo "$EXPECTED_REPO" \
+              --signer-workflow "$BUILD_SIGNER_WORKFLOW" \
+              --predicate-type "$SLSA_PREDICATE" \
+              --format json > "$out_file"
+
+            expected_sha="${expected_digest#sha256:}"
+            jq -e --arg expected_sha "$expected_sha" --arg expected_name "ghcr.io/${EXPECTED_REPO}/${component}" '
+              [.. | objects | select(has("subject")) | .subject[]? |
+                select((.name // "") == $expected_name and (.digest.sha256 // "") == $expected_sha)] | length > 0
+            ' "$out_file" > /dev/null
+          }
+
+          verify_component frontend "${{ steps.inspect.outputs.frontend_index_digest }}"
+          verify_component api "${{ steps.inspect.outputs.api_index_digest }}"
+
+      - name: Run unprivileged runtime checks
+        run: |
+          set -euo pipefail
+          mkdir -p report/runtime runtime
+
+          HEAD_SHA='${{ steps.pr.outputs.head_sha }}'
+          FRONTEND_LOCAL_REF="localhost/workout-app-frontend:validate-${HEAD_SHA}"
+          API_LOCAL_REF="localhost/workout-app-api:validate-${HEAD_SHA}"
+
+          skopeo copy --override-os linux --override-arch amd64 "oci-archive:artifacts/oci/frontend.oci.tar" "docker-daemon:${FRONTEND_LOCAL_REF}"
+          skopeo copy --override-os linux --override-arch amd64 "oci-archive:artifacts/oci/api.oci.tar" "docker-daemon:${API_LOCAL_REF}"
+
+          cat > runtime/runtime-config-a.json <<'JSON'
+          {
+            "apiBaseUrl": "http://127.0.0.1:5000",
+            "deploymentMode": "preview-a"
+          }
+          JSON
+
+          cat > runtime/runtime-config-b.json <<'JSON'
+          {
+            "apiBaseUrl": "http://127.0.0.1:5000",
+            "deploymentMode": "preview-b"
+          }
+          JSON
+
+          printf 'runtime-db-password' > runtime/postgres-password.txt
+
+          docker run -d --name frontend-runtime-a \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=32m \
+            --tmpfs /var/cache/nginx:rw,noexec,nosuid,size=32m \
+            --tmpfs /var/run:rw,noexec,nosuid,size=8m \
+            -p 4173:4173 \
+            -v "$PWD/runtime/runtime-config-a.json:/usr/share/nginx/html/runtime-config.json:ro" \
+            "$FRONTEND_LOCAL_REF"
+
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:4173/health > report/runtime/frontend-a-health.txt; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:4173/runtime-config.json > report/runtime/frontend-a-runtime-config.json
+
+          docker run -d --name frontend-runtime-b \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=32m \
+            --tmpfs /var/cache/nginx:rw,noexec,nosuid,size=32m \
+            --tmpfs /var/run:rw,noexec,nosuid,size=8m \
+            -p 4174:4173 \
+            -v "$PWD/runtime/runtime-config-b.json:/usr/share/nginx/html/runtime-config.json:ro" \
+            "$FRONTEND_LOCAL_REF"
+
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:4174/health > report/runtime/frontend-b-health.txt; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:4174/runtime-config.json > report/runtime/frontend-b-runtime-config.json
+
+          jq -e '.deploymentMode == "preview-a"' report/runtime/frontend-a-runtime-config.json > /dev/null
+          jq -e '.deploymentMode == "preview-b"' report/runtime/frontend-b-runtime-config.json > /dev/null
+
+          docker run -d --name postgres-runtime \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=32m \
+            --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=512m \
+            --tmpfs /var/run/postgresql:rw,noexec,nosuid,size=16m \
+            -e POSTGRES_DB=workout \
+            -e POSTGRES_USER=workout \
+            -e POSTGRES_PASSWORD_FILE=/run/secrets/postgres-password \
+            -v "$PWD/runtime/postgres-password.txt:/run/secrets/postgres-password:ro" \
+            postgres:16-alpine
+
+          pg_ready=0
+          for _ in $(seq 1 30); do
+            if docker exec postgres-runtime pg_isready -U workout -d workout; then
+              pg_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$pg_ready" -ne 1 ]; then
+            echo "PostgreSQL did not become ready after retries" >&2
+            exit 1
+          fi
+
+          docker run -d --name api-runtime \
+            --network container:postgres-runtime \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=32m \
+            --tmpfs /app/tmp:rw,noexec,nosuid,size=32m \
+            -e ConnectionStrings__Default='Host=127.0.0.1;Port=5432;Database=workout;Username=workout' \
+            -e ConnectionStrings__Default__PasswordFile=/run/secrets/postgres-password \
+            -e Auth__Issuer='https://auth.homelab.example/application/o/workout-app/' \
+            -e Auth__ClientId='workout-app' \
+            -v "$PWD/runtime/postgres-password.txt:/run/secrets/postgres-password:ro" \
+            "$API_LOCAL_REF"
+
+          # Only the images this repository builds and publishes are subject to the
+          # non-root gate. postgres-runtime is unmodified upstream postgres:16-alpine,
+          # test scaffolding that declares no image user and drops privileges internally.
+          for c in frontend-runtime-a frontend-runtime-b api-runtime; do
+            runtime_user=$(docker inspect -f '{{.Config.User}}' "$c")
+            if [ -z "$runtime_user" ] || [ "$runtime_user" = "root" ] || [ "$runtime_user" = "0" ] || [ "$runtime_user" = "0:0" ]; then
+              echo "Container ${c} is not running as a non-root user" >&2
+              exit 1
+            fi
+          done
+
+          api_ready=0
+          for _ in $(seq 1 30); do
+            if docker run --rm --network container:postgres-runtime curlimages/curl:8.9.1 -fsS http://127.0.0.1:5000/api/health > report/runtime/api-health.txt; then
+              api_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$api_ready" -ne 1 ]; then
+            echo "API did not become ready after retries" >&2
+            exit 1
+          fi
+
+          docker logs api-runtime > report/runtime/api-logs.txt
+
+          for c in frontend-runtime-a frontend-runtime-b api-runtime postgres-runtime; do
+            docker stop --time 20 "$c" > /dev/null
+            exit_code=$(docker inspect -f '{{.State.ExitCode}}' "$c")
+            if [ "$exit_code" != "0" ]; then
+              echo "Container ${c} did not stop gracefully (exit code ${exit_code})" >&2
+              exit 1
+            fi
+          done
+
+      # `docker sbom` is a Docker Desktop CLI plugin and does not exist on GitHub-hosted
+      # runners, so SBOM generation is done with a pinned syft release whose archive is
+      # checksum-verified before use.
+      - name: Install syft
+        env:
+          SYFT_VERSION: 1.49.0
+          SYFT_SHA256: 7aa2f03ee92739cf643279ba3990548b9925d4e22cae13f46831ee62821147fe
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/syft.tar.gz \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  /tmp/syft.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/syft.tar.gz -C /usr/local/bin syft
+          syft version
+
+      - name: Generate SPDX SBOM files from validated images
+        env:
+          SYFT_CHECK_FOR_APP_UPDATE: 'false'
+        run: |
+          set -euo pipefail
+          HEAD_SHA='${{ steps.pr.outputs.head_sha }}'
+          FRONTEND_LOCAL_REF="localhost/workout-app-frontend:validate-${HEAD_SHA}"
+          API_LOCAL_REF="localhost/workout-app-api:validate-${HEAD_SHA}"
+          mkdir -p report/sbom
+          syft scan -o spdx-json "docker:${FRONTEND_LOCAL_REF}" > report/sbom/frontend.spdx.json
+          syft scan -o spdx-json "docker:${API_LOCAL_REF}" > report/sbom/api.spdx.json
+          jq -e '.spdxVersion and (.packages | length > 0)' report/sbom/frontend.spdx.json > /dev/null
+          jq -e '.spdxVersion and (.packages | length > 0)' report/sbom/api.spdx.json > /dev/null
+
+      - name: Cleanup runtime containers
+        if: always()
+        run: |
+          docker rm -f frontend-runtime-a frontend-runtime-b api-runtime postgres-runtime >/dev/null 2>&1 || true
+
+      - name: Upload validated SBOM files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: preview-validated-sbom
+          path: report/sbom/
+          retention-days: 30
+
+      - name: Upload final diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: preview-final-diagnostics
+          path: report/
+          retention-days: 30
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    concurrency:
+      group: preview-publish-pr-${{ needs.validate.outputs.pr_number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+      id-token: write
+      attestations: write
+      pull-requests: write
+    env:
+      EXPECTED_REPO: eklavyamirani/workout-app
+    steps:
+      - name: Download OCI layouts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: preview-oci-layouts
+          run-id: ${{ github.event.workflow_run.id }}
+          path: artifacts/oci
+          github-token: ${{ github.token }}
+
+      - name: Download validated SBOM files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: preview-validated-sbom
+          run-id: ${{ github.run_id }}
+          path: report/sbom
+          github-token: ${{ github.token }}
+
+      - name: Install skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+      - name: Login to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Publish immutable preview tags
+        id: publish
+        run: |
+          set -euo pipefail
+          PR_NUMBER='${{ needs.validate.outputs.pr_number }}'
+          HEAD_SHA='${{ needs.validate.outputs.head_sha }}'
+          FRONTEND_EXPECTED_DIGEST='${{ needs.validate.outputs.frontend_index_digest }}'
+          API_EXPECTED_DIGEST='${{ needs.validate.outputs.api_index_digest }}'
+
+          FRONTEND_IMAGE="ghcr.io/eklavyamirani/workout-app/frontend:pr-${PR_NUMBER}-${HEAD_SHA}"
+          API_IMAGE="ghcr.io/eklavyamirani/workout-app/api:pr-${PR_NUMBER}-${HEAD_SHA}"
+
+          skopeo copy --all --digestfile frontend-published.digest "oci-archive:artifacts/oci/frontend.oci.tar" "docker://${FRONTEND_IMAGE}"
+          skopeo copy --all --digestfile api-published.digest "oci-archive:artifacts/oci/api.oci.tar" "docker://${API_IMAGE}"
+
+          FRONTEND_DIGEST=$(tr -d '\n' < frontend-published.digest)
+          API_DIGEST=$(tr -d '\n' < api-published.digest)
+
+          test "$FRONTEND_DIGEST" = "$FRONTEND_EXPECTED_DIGEST"
+          test "$API_DIGEST" = "$API_EXPECTED_DIGEST"
+
+          echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "api_image=${API_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "frontend_digest=${FRONTEND_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "api_digest=${API_DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Attest frontend publisher provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+        with:
+          subject-name: ghcr.io/eklavyamirani/workout-app/frontend
+          subject-digest: ${{ steps.publish.outputs.frontend_digest }}
+          push-to-registry: true
+
+      - name: Attest API publisher provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+        with:
+          subject-name: ghcr.io/eklavyamirani/workout-app/api
+          subject-digest: ${{ steps.publish.outputs.api_digest }}
+          push-to-registry: true
+
+      - name: Attest frontend SPDX SBOM
+        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b
+        with:
+          subject-name: ghcr.io/eklavyamirani/workout-app/frontend
+          subject-digest: ${{ steps.publish.outputs.frontend_digest }}
+          sbom-path: report/sbom/frontend.spdx.json
+          push-to-registry: true
+
+      - name: Attest API SPDX SBOM
+        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b
+        with:
+          subject-name: ghcr.io/eklavyamirani/workout-app/api
+          subject-digest: ${{ steps.publish.outputs.api_digest }}
+          sbom-path: report/sbom/api.spdx.json
+          push-to-registry: true
+
+      - name: Create publication report
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          cat > report/publication.json <<JSON
+          {
+            "repository": "${EXPECTED_REPO}",
+            "pr_number": ${{ needs.validate.outputs.pr_number }},
+            "head_sha": "${{ needs.validate.outputs.head_sha }}",
+            "workflow_run_url": "https://github.com/${EXPECTED_REPO}/actions/runs/${{ github.run_id }}",
+            "frontend": {
+              "tag": "${{ steps.publish.outputs.frontend_image }}",
+              "digest": "${{ steps.publish.outputs.frontend_digest }}"
+            },
+            "api": {
+              "tag": "${{ steps.publish.outputs.api_image }}",
+              "digest": "${{ steps.publish.outputs.api_digest }}"
+            },
+            "sbom_attested": true
+          }
+          JSON
+
+      - name: Upload publication report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: preview-publication-report
+          path: report/publication.json
+          retention-days: 30
+
+      - name: Upsert PR comment
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          PR_NUMBER: ${{ needs.validate.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.validate.outputs.head_sha }}
+          FRONTEND_DIGEST: ${{ steps.publish.outputs.frontend_digest }}
+          API_DIGEST: ${{ steps.publish.outputs.api_digest }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const marker = '<!-- workout-app-preview-publication -->';
+            const body = `${marker}\nHead SHA: ${process.env.HEAD_SHA}\nFrontend digest: ${process.env.FRONTEND_DIGEST}\nAPI digest: ${process.env.API_DIGEST}\nWorkflow run: ${process.env.RUN_URL}\nAttestation status: build-provenance=verified, publish-provenance=verified, sbom=verified`;
+            const issue_number = Number(process.env.PR_NUMBER);
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }

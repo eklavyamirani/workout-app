@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using server.Configuration;
 using server.Data;
 using server.Endpoints;
 using server.Middleware;
@@ -7,9 +8,16 @@ using server.Middleware;
 var builder = WebApplication.CreateBuilder(args);
 
 // Database
-var connectionString = builder.Configuration.GetConnectionString("Default")
+// Non-secret connection information comes from configuration; the password is supplied
+// separately through a mounted file (ConnectionStrings__Default__PasswordFile).
+var connectionString = ConnectionStringFactory.Resolve(builder.Configuration, "Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
-var db = new AppDb(connectionString);
+var adminConnectionString = ConnectionStringFactory.Resolve(builder.Configuration, "Admin");
+var appRolePasswordFile = builder.Configuration["Database:AppRolePasswordFile"];
+var appRolePassword = string.IsNullOrWhiteSpace(appRolePasswordFile)
+    ? null
+    : ConnectionStringFactory.ReadSecretFile(appRolePasswordFile);
+var db = new AppDb(connectionString, adminConnectionString, appRolePassword);
 builder.Services.AddSingleton(db);
 
 // Authentication
@@ -81,8 +89,22 @@ app.UseWhen(
     appBuilder => appBuilder.UseMiddleware<UserResolverMiddleware>()
 );
 
-// Health check
-app.MapGet("/api/health", () => Results.Ok(new { status = "healthy" }));
+// Health check — verifies the database dependency without disclosing configuration.
+app.MapGet("/api/health", async (AppDb appDb, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        await appDb.CheckAsync(cancellationToken);
+        return Results.Ok(new { status = "healthy", dependencies = new { database = "healthy" } });
+    }
+    catch (Exception ex)
+    {
+        loggerFactory.CreateLogger("Health").LogError(ex, "Database health check failed");
+        return Results.Json(
+            new { status = "unhealthy", dependencies = new { database = "unhealthy" } },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+});
 
 // Sync endpoints
 app.MapSyncEndpoints();

@@ -1,5 +1,6 @@
 import { getToken } from './auth';
 import { refreshAccessToken, isTokenExpired } from './oidc';
+import { getApiBaseUrl } from './runtimeConfig';
 
 export interface SyncChange {
   key: string;
@@ -26,7 +27,6 @@ export interface PullResponse {
   serverTime: string;
 }
 
-const API_BASE = '/api';
 
 async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   // Refresh token if expired before making the request
@@ -39,7 +39,7 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
     throw new Error('Not authenticated');
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -52,7 +52,7 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
   if (response.status === 401) {
     const newToken = await refreshAccessToken();
     if (newToken) {
-      return fetch(`${API_BASE}${path}`, {
+      return fetch(`${getApiBaseUrl()}${path}`, {
         ...options,
         headers: {
           'Content-Type': 'application/json',

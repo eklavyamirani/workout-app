@@ -91,6 +91,8 @@ image digest can serve multiple environments:
 ```
 
 An empty `apiBaseUrl` means "same origin" (the Traefik setup above).
+At container startup, the frontend validates `oidcAuthority` and restricts its
+`connect-src` Content Security Policy to that authority's origin.
 
 ## Authentik OIDC Setup
 

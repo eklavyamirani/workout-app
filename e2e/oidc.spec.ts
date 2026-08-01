@@ -69,6 +69,35 @@ test.describe('OIDC sign-in', () => {
     expect(url.searchParams.get('state')).toBeTruthy();
   });
 
+  test('normalizes a trailing slash before requesting OIDC discovery', async ({ page }) => {
+    await page.route('**/runtime-config.json', route =>
+      route.fulfill({
+        json: {
+          oidcAuthority: 'http://localhost/application/o/workout-app/',
+          oidcClientId: 'workout-app',
+          oidcRedirectUri: 'http://localhost:4173/',
+        },
+      }),
+    );
+
+    let discoveryUrl: string | null = null;
+    await page.route('**/.well-known/openid-configuration', route => {
+      discoveryUrl = route.request().url();
+      return route.fulfill({ json: FAKE_DISCOVERY });
+    });
+    await page.route('**/application/o/authorize/**', route =>
+      route.fulfill({ status: 200, body: 'intercepted' }),
+    );
+
+    await page.reload();
+    await page.getByRole('button', { name: /sign in/i }).click();
+    await page.waitForTimeout(1000);
+
+    expect(discoveryUrl).toBe(
+      'http://localhost/application/o/workout-app/.well-known/openid-configuration',
+    );
+  });
+
   test('OIDC callback exchanges code using discovery token_endpoint', async ({ page }) => {
     // Mock discovery
     await page.route('**/application/o/workout-app/.well-known/openid-configuration', route =>

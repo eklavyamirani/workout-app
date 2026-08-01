@@ -24,17 +24,29 @@ let cached: RuntimeConfig | null = null;
 
 function envFallback(): RuntimeConfig {
   const env = import.meta.env as Record<string, string | undefined>;
-  return {
+  return sanitize({
     apiBaseUrl: env.VITE_API_BASE_URL,
     deploymentMode: env.VITE_DEPLOYMENT_MODE,
     oidcAuthority: env.VITE_OIDC_AUTHORITY,
     oidcClientId: env.VITE_OIDC_CLIENT_ID,
     oidcRedirectUri: env.VITE_OIDC_REDIRECT_URI,
-  };
+  });
 }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function normalizeOidcAuthority(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+      return undefined;
+    }
+    return value.replace(/\/+$/, '');
+  } catch {
+    return undefined;
+  }
 }
 
 function sanitize(raw: unknown): RuntimeConfig {
@@ -51,6 +63,9 @@ function sanitize(raw: unknown): RuntimeConfig {
     if (isNonEmptyString(source[key])) {
       config[key] = (source[key] as string).trim();
     }
+  }
+  if (config.oidcAuthority) {
+    config.oidcAuthority = normalizeOidcAuthority(config.oidcAuthority);
   }
   return config;
 }

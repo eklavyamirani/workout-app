@@ -9,6 +9,14 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build
 
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS runtime-csp
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+COPY deploy/runtime-csp.go .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+  go build -trimpath -ldflags="-s -w" -o /out/configure-runtime-csp runtime-csp.go
+
 FROM nginx:1.27-alpine
 
 # Numeric non-root user; the image must run with a read-only root filesystem, so all
@@ -18,7 +26,9 @@ RUN addgroup -g 10001 -S app \
   && rm -f /etc/nginx/conf.d/default.conf
 
 COPY deploy/nginx-main.conf /etc/nginx/nginx.conf
-COPY deploy/nginx-site.conf /etc/nginx/conf.d/site.conf
+COPY deploy/nginx-site.conf /etc/nginx/site.conf.template
+COPY --from=runtime-csp /out/configure-runtime-csp /usr/local/bin/configure-runtime-csp
+COPY --chmod=755 deploy/configure-runtime-csp.sh /docker-entrypoint.d/40-configure-runtime-csp.sh
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 4173

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterAnonymousMode } from './helpers';
 
 // Helper: navigate through ballet setup wizard to the routine builder step
 async function createBalletProgramToStep3(page: import('@playwright/test').Page, {
@@ -66,6 +67,7 @@ test.describe('Ballet Setup Wizard', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can create a beginner full ballet program', async ({ page }) => {
@@ -156,6 +158,7 @@ test.describe('Routine Builder', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can add a custom routine', async ({ page }) => {
@@ -315,6 +318,7 @@ test.describe('Ballet Session', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can start a ballet session and see routines with movements', async ({ page }) => {
@@ -479,6 +483,7 @@ test.describe('In-Session Editing', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can open edit modal during session', async ({ page }) => {
@@ -567,6 +572,7 @@ test.describe('Exercise Reference Popover', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can open reference popover from routine builder', async ({ page }) => {
@@ -717,6 +723,7 @@ test.describe('Carry Forward (practiceNext)', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('practiceNext notes from completed session appear in next session', async ({ page }) => {
@@ -784,6 +791,7 @@ test.describe('Ballet Program Persistence', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('ballet program persists after page reload', async ({ page }) => {

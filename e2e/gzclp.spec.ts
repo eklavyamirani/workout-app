@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { enterAnonymousMode } from './helpers';
 
 test.describe('GZCLP Program', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can create a GZCLP program with 4-day split', async ({ page }) => {

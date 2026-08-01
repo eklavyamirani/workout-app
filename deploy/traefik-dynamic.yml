@@ -1,0 +1,34 @@
+http:
+  routers:
+    frontend:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - web
+      service: frontend
+      priority: 1
+    api:
+      rule: "PathPrefix(`/api`) && !PathPrefix(`/api/v3`)"
+      entryPoints:
+        - web
+      service: api
+      priority: 10
+    authentik:
+      rule: "PathPrefix(`/application`) || PathPrefix(`/.well-known`) || PathPrefix(`/if`) || PathPrefix(`/outpost.goauthentik.io`) || PathPrefix(`/flows`) || PathPrefix(`/static`) || PathPrefix(`/api/v3`) || PathPrefix(`/ws`)"
+      entryPoints:
+        - web
+      service: authentik
+      priority: 20
+
+  services:
+    frontend:
+      loadBalancer:
+        servers:
+          - url: "http://workout-app:4173"
+    api:
+      loadBalancer:
+        servers:
+          - url: "http://api:5000"
+    authentik:
+      loadBalancer:
+        servers:
+          - url: "http://authentik-server:9000"

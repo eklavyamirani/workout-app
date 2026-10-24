@@ -23,13 +23,22 @@ sign-in, cross-device persistence and rollback verified by Playwright
 (app-platform `docs/evidence/phase-1/` on `platform/phase-1`,
 eklavyamirani/app-platform#1). The adoption handoff file has been removed, as it asked.
 The platform took the contract requests: §6a/§12 corrected, logout callback URLs, edge
-security headers, `INHERIT FALSE, SET FALSE` runtime role. Seed hooks and `REASSIGN OWNED`
-after a clone are platform phase 2 (design §10).
+security headers, `INHERIT FALSE, SET FALSE` runtime role.
+
+Previews (platform phase 2, app-platform record 0008): `platform.toml` now sets the seed
+hooks `fixture` and `sanitize`. A branch push builds `workout_app_seed`: migrate, then
+`--seed fixture`. Each preview clones it copy-on-write, and the platform runs `REASSIGN OWNED`
+to the preview's owner before the preview's `--migrate`. Verified by Playwright
+(app-platform `docs/evidence/phase-2/`):
+- sign-in through the preview's own client `workout-app-<env>`;
+- a program written in a preview is visible neither in prod nor in another preview;
+- a preview token gets 401 from prod.
 
 ## Open follow-ups
 
-- Wire `--seed fixture|sanitize` (record 0007) into the platform's seed hooks once they
-  exist in phase 2.
+- `seed = "staging"` (prod dump + `--seed sanitize`) fails here. `user_data` has
+  `FORCE ROW LEVEL SECURITY`, so the owner role cannot dump it. The platform would need a
+  BYPASSRLS dump role (app-platform record 0008, owner decision). `fixture` is unaffected.
 - Point this repo's `e2e/` suite at a platform URL with the WebAuthn virtual
   authenticator (today it runs against `vite dev` with mocked OIDC; the platform repo has
   its own workout-app E2E).

@@ -32,4 +32,8 @@ mode = "oidc"                   # SPA does OIDC + PKCE; API validates aud = work
 
 [previews]
 enabled = true
-seed = "fixture"                # server/Data/Seed/fixture.sql (record 0007); seed hooks are platform phase 2
+seed = "fixture"                # server/Data/Seed/fixture.sql (record 0007)
+# Seed hooks (platform record 0008): run like migrate (api image, owner role) against
+# <app>_seed_next; the platform clones the frozen seed copy-on-write per preview.
+fixture = "dotnet server.dll --seed fixture"    # after migrate, when seed = "fixture"
+sanitize = "dotnet server.dll --seed sanitize"  # after loading a prod dump, when seed = "staging"

@@ -12,3 +12,4 @@ sequentially, never renumber.
 | [0003](0003-migration-job-and-runtime-role.md) | 2026-10-23 | `--migrate` job as owner; no role DDL; grants to `DATABASE_RUNTIME_ROLE`; PG18 tests | agent-decided |
 | [0004](0004-identify-users-by-issuer-and-subject.md) | 2026-10-23 | Users keyed by `(iss, sub)`; Pocket ID access tokens have no email | agent-decided |
 | [0005](0005-read-config-from-runtime-contract.md) | 2026-10-23 | `DATABASE_URL`, `OIDC_*`, `PLATFORM_CA_FILE`, `PORT`; standard OIDC logout | agent-decided |
+| [0006](0006-platform-manifest.md) | 2026-10-23 | `platform.toml` = §7 example + `[previews]`; scratch site stage; contract smoke script | agent-decided |

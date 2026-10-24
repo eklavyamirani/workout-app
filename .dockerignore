@@ -1,0 +1,12 @@
+# Build context for deploy/Dockerfile and deploy/Dockerfile.static. Host build output and
+# dependencies must not leak into Linux images (e.g. macOS-native node_modules binaries).
+.git
+node_modules
+dist
+coverage
+test-results
+playwright-report
+server
+deploy/secrets
+deploy/.env
+.env.local

@@ -8,3 +8,4 @@ sequentially, never renumber.
 | # | Date | Decision | Status |
 |---|------|----------|--------|
 | [0001](0001-rebuild-platform-adopt-branch.md) | 2026-10-23 | Rebuild `platform/adopt` from the design doc (old WIP never pushed) | agent-decided |
+| [0002](0002-transaction-local-user-context.md) | 2026-10-23 | Per-request transaction carries the RLS user id; PgBouncer-backed tests | agent-decided |

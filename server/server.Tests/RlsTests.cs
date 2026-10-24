@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Npgsql;
+using server.Data;
 using server.Models;
 using server.Tests.Fixtures;
 
@@ -79,18 +80,15 @@ public class RlsTests : IClassFixture<AppFactory>
         idCmd.Parameters.AddWithValue("email", "rls-policy-a@test.com");
         var userAId = (Guid)(await idCmd.ExecuteScalarAsync())!;
 
-        await using var setCmd = new NpgsqlCommand(
-            "SELECT set_config('app.current_user_id', @id, false)", conn);
-        setCmd.Parameters.AddWithValue("id", userAId.ToString());
-        await setCmd.ExecuteNonQueryAsync();
+        await using var tx = await UserScope.BeginAsync(conn, userAId);
 
         // Deliberately no user_id predicate: isolation must come from the RLS policy.
         await using var selectCmd = new NpgsqlCommand(
-            "SELECT count(*) FROM user_data WHERE user_id <> @id", conn);
+            "SELECT count(*) FROM user_data WHERE user_id <> @id", conn, tx);
         selectCmd.Parameters.AddWithValue("id", userAId);
         Assert.Equal(0L, (long)(await selectCmd.ExecuteScalarAsync())!);
 
-        await using var ownCmd = new NpgsqlCommand("SELECT count(*) FROM user_data", conn);
+        await using var ownCmd = new NpgsqlCommand("SELECT count(*) FROM user_data", conn, tx);
         Assert.True((long)(await ownCmd.ExecuteScalarAsync())! > 0);
     }
 

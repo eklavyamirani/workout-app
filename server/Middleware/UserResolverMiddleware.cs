@@ -27,18 +27,17 @@ public class UserResolverMiddleware
 
         await using var conn = await db.OpenConnectionAsync();
 
-        // Find or create user
+        // Find or create user (autocommit, before the user scope: 'users' has no RLS)
         var userId = await FindOrCreateUser(conn, email);
+
+        // The whole request runs in one transaction carrying the RLS user id (see UserScope).
+        // Endpoints that write commit it before responding; anything left uncommitted is
+        // rolled back when the transaction is disposed.
+        await using var transaction = await UserScope.BeginAsync(conn, userId);
 
         context.Items["User"] = new UserInfo(userId, email);
         context.Items["DbConnection"] = conn;
-
-        // set_config with is_local=false sets the value for the whole session, which
-        // survives outside an explicit transaction block (SET LOCAL would be a no-op here).
-        await using var setCmd = new NpgsqlCommand(
-            "SELECT set_config('app.current_user_id', @id, false)", conn);
-        setCmd.Parameters.AddWithValue("id", userId.ToString());
-        await setCmd.ExecuteNonQueryAsync();
+        context.Items["DbTransaction"] = transaction;
 
         await _next(context);
     }

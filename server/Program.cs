@@ -33,6 +33,16 @@ if (args.Contains("--migrate"))
     return;
 }
 
+var seedIndex = Array.IndexOf(args, "--seed");
+if (seedIndex >= 0)
+{
+    // Preview seed job (platform design §5.2): owner role, after --migrate.
+    var script = seedIndex + 1 < args.Length ? args[seedIndex + 1] : "";
+    await Seeder.RunAsync(connectionString, script);
+    Console.WriteLine($"Seed script '{script}' applied.");
+    return;
+}
+
 builder.Services.AddSingleton(new AppDb(connectionString));
 
 // Authentication: OIDC bearer tokens from the platform IdP (design §6a, `oidc` mode).

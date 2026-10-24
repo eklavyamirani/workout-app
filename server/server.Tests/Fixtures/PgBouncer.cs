@@ -35,8 +35,7 @@ public sealed class PgBouncer : IAsyncDisposable
             """;
         var userlist = string.Concat(users.Select(u => $"\"{u.Key}\" \"{u.Value}\"\n"));
 
-        _container = new ContainerBuilder()
-            .WithImage(Image)
+        _container = new ContainerBuilder(Image)
             .WithNetwork(network)
             .WithResourceMapping(Encoding.UTF8.GetBytes(ini), "/etc/pgbouncer/pgbouncer.ini")
             .WithResourceMapping(Encoding.UTF8.GetBytes(userlist), "/etc/pgbouncer/userlist.txt")

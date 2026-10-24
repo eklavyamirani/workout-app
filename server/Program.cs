@@ -9,16 +9,25 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Database
 // Non-secret connection information comes from configuration; the password is supplied
-// separately through a mounted file (ConnectionStrings__Default__PasswordFile).
+// separately through a mounted file (ConnectionStrings__Default__PasswordFile). The role is
+// whatever the environment provides: the owner for the migration job, the runtime role for
+// the API (design §6b.1).
 var connectionString = ConnectionStringFactory.Resolve(builder.Configuration, "Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
-var adminConnectionString = ConnectionStringFactory.Resolve(builder.Configuration, "Admin");
-var appRolePasswordFile = builder.Configuration["Database:AppRolePasswordFile"];
-var appRolePassword = string.IsNullOrWhiteSpace(appRolePasswordFile)
-    ? null
-    : ConnectionStringFactory.ReadSecretFile(appRolePasswordFile);
-var db = new AppDb(connectionString, adminConnectionString, appRolePassword);
-builder.Services.AddSingleton(db);
+
+if (args.Contains("--migrate"))
+{
+    // Migration job: apply the schema as the owner and exit; the API never migrates.
+    var runtimeRole = builder.Configuration["DATABASE_RUNTIME_ROLE"]
+        ?? builder.Configuration["Database:RuntimeRole"];
+    await Migrator.RunAsync(connectionString, string.IsNullOrWhiteSpace(runtimeRole) ? null : runtimeRole);
+    Console.WriteLine(runtimeRole is null
+        ? "Migrations applied (no separate runtime role)."
+        : $"Migrations applied; runtime role '{runtimeRole}' granted.");
+    return;
+}
+
+builder.Services.AddSingleton(new AppDb(connectionString));
 
 // Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -75,9 +84,6 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
-
-// Initialize database schema
-await db.InitializeAsync();
 
 app.UseCors();
 app.UseAuthentication();

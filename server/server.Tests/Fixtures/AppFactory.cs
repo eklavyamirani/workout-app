@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Networks;
 using Microsoft.AspNetCore.Authentication;
@@ -6,10 +5,16 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using server.Data;
 using Testcontainers.PostgreSql;
 
 namespace server.Tests.Fixtures;
 
+/// <summary>
+/// The API as it runs on the platform: database and roles provisioned by "the platform"
+/// (<see cref="PlatformDatabase"/>), schema applied by the migration job as the owner, and the
+/// API connected as the NOBYPASSRLS runtime role so row-level security is actually enforced.
+/// </summary>
 public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private const string DbAlias = "db";
@@ -18,14 +23,11 @@ public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private readonly PostgreSqlContainer _postgres;
     private PgBouncer? _pgBouncer;
 
-    private readonly string _appRolePassword =
-        Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
-
-    private string? _appRolePasswordFile;
+    public PlatformDatabase Database { get; } = PlatformDatabase.Create("workout_app_test");
 
     public AppFactory()
     {
-        _postgres = new PostgreSqlBuilder("postgres:16-alpine")
+        _postgres = new PostgreSqlBuilder(PlatformDatabase.PostgresImage)
             .WithNetwork(_network)
             .WithNetworkAliases(DbAlias)
             .Build();
@@ -37,22 +39,19 @@ public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// </summary>
     protected virtual bool UsePooler => false;
 
-    /// <summary>Superuser connection used only for schema/role bootstrapping.</summary>
-    public string AdminConnectionString => _postgres.GetConnectionString();
+    /// <summary>Superuser connection; test setup only (the platform's role).</summary>
+    public string SuperuserConnectionString => _postgres.GetConnectionString();
 
-    /// <summary>
-    /// Runtime connection used by the API. It deliberately uses the non-superuser
-    /// 'workout_app' role so row-level security is actually enforced in tests.
-    /// </summary>
+    /// <summary>Database owner, as the migration job connects.</summary>
+    public string OwnerConnectionString => Database.OwnerConnectionString(SuperuserConnectionString);
+
+    /// <summary>Runtime role, as the API connects (through the pooler when <see cref="UsePooler"/>).</summary>
     public string ConnectionString
     {
         get
         {
-            var builder = new NpgsqlConnectionStringBuilder(AdminConnectionString)
-            {
-                Username = "workout_app",
-                Password = _appRolePassword
-            };
+            var builder = new NpgsqlConnectionStringBuilder(
+                Database.RuntimeConnectionString(SuperuserConnectionString));
             if (_pgBouncer is not null)
             {
                 builder.Host = _pgBouncer.Host;
@@ -69,25 +68,22 @@ public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         await _network.CreateAsync();
         await _postgres.StartAsync();
+        await Database.ProvisionAsync(SuperuserConnectionString);
+        await Migrator.RunAsync(OwnerConnectionString, Database.RuntimeRole);
 
         if (UsePooler)
         {
-            _pgBouncer = new PgBouncer(_network, DbAlias,
-                new Dictionary<string, string> { ["workout_app"] = _appRolePassword });
+            _pgBouncer = new PgBouncer(_network, DbAlias, new Dictionary<string, string>
+            {
+                [Database.OwnerRole] = Database.OwnerPassword,
+                [Database.RuntimeRole] = Database.RuntimePassword,
+            });
             await _pgBouncer.StartAsync();
         }
-
-        _appRolePasswordFile = Path.Combine(Path.GetTempPath(), $"workout-app-role-{Guid.NewGuid():N}");
-        await File.WriteAllTextAsync(_appRolePasswordFile, _appRolePassword);
     }
 
     async Task IAsyncLifetime.DisposeAsync()
     {
-        if (_appRolePasswordFile is not null && File.Exists(_appRolePasswordFile))
-        {
-            File.Delete(_appRolePasswordFile);
-        }
-
         if (_pgBouncer is not null)
         {
             await _pgBouncer.DisposeAsync();
@@ -100,8 +96,6 @@ public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         // Provide connection settings via configuration so they are available at startup.
         builder.UseSetting("ConnectionStrings:Default", ConnectionString);
-        builder.UseSetting("ConnectionStrings:Admin", AdminConnectionString);
-        builder.UseSetting("Database:AppRolePasswordFile", _appRolePasswordFile!);
 
         builder.ConfigureServices(services =>
         {

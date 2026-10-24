@@ -5,8 +5,9 @@
 #
 #   1. "platform": Postgres 18, DB owned by a NOSUPERUSER/NOCREATEROLE role, NOBYPASSRLS _rt role,
 #      CONNECT revoked from PUBLIC; PgBouncer in transaction mode (db.platform:6432 stand-in)
-#   2. migration job: `/bin/sh -c "dotnet server.dll --migrate"` as the owner, with
-#      DATABASE_RUNTIME_ROLE, through the pooler (platform.toml [database])
+#   2. migration job: `dotnet server.dll --migrate` exec'd directly (the platform uses /bin/sh -c
+#      only for commands with shell syntax) as the owner, with DATABASE_RUNTIME_ROLE, through the
+#      pooler (platform.toml [database])
 #   3. API pod: runtime role, DATABASE_URL without password + password file under
 #      /run/secrets/platform, PORT, OIDC_*, read-only root fs + /tmp tmpfs, uid 10001, no caps
 #   4. checks: /api/health healthy, unauthenticated sync 401, runtime role cannot change schema
@@ -96,7 +97,7 @@ docker run --rm "${POD_FLAGS[@]}" -v "$P-owner:/run/secrets/platform:ro" \
   -e DATABASE_URL="postgres://$OWNER@pgbouncer:6432/$DB" \
   -e DATABASE_PASSWORD_FILE=/run/secrets/platform/DATABASE_PASSWORD \
   -e DATABASE_RUNTIME_ROLE="$RT" \
-  --entrypoint /bin/sh "$API_IMAGE" -c "dotnet server.dll --migrate" \
+  --entrypoint dotnet "$API_IMAGE" server.dll --migrate \
   && pass "migration job exited 0" || fail "migration job"
 
 echo "=== API pod (runtime role) ==="

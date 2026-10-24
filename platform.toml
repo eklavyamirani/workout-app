@@ -32,4 +32,4 @@ mode = "oidc"                   # SPA does OIDC + PKCE; API validates aud = work
 
 [previews]
 enabled = true
-seed = "fixture"                # server/Data/Seed/fixture.sql, see docs/handoff/platform-adopt.md
+seed = "fixture"                # server/Data/Seed/fixture.sql (record 0007); seed hooks are platform phase 2

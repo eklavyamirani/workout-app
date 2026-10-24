@@ -4,7 +4,7 @@ This app is a reference app of the app platform
 (`eklavyamirani/app-platform`, `docs/design.md`). Platform adoption work
 follows that doc's §0 process rules; read §0, §5.1, §6a, §6b.1, §7 and §12
 before starting. Do not edit the platform repo from here: contract changes
-go in `docs/handoff/platform-adopt.md` and the PR.
+go in the PR (and a `docs/handoff/` note when work is handed over).
 
 ## Working principle (mandatory)
 

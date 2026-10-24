@@ -164,7 +164,7 @@ The E2E test suite covers:
 Deployed environments run on the app platform (`eklavyamirani/app-platform`) from
 `platform.toml`: static SPA served by the platform edge, `api` service on `/api/*`, Postgres
 with a separate runtime role, and sign-in through the platform's Pocket ID. Decisions are in
-`docs/decisions/`; open items in `docs/handoff/platform-adopt.md`.
+`docs/decisions/`, with open follow-ups listed in `docs/decisions/README.md`.
 
 `deploy/README.md` describes the local full-stack environment (Traefik, Authentik, Postgres).
 

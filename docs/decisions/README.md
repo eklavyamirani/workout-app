@@ -15,3 +15,26 @@ sequentially, never renumber.
 | [0006](0006-platform-manifest.md) | 2026-10-23 | `platform.toml` = §7 example + `[previews]`; scratch site stage; contract smoke script | agent-decided |
 | [0007](0007-preview-seed-fixture-and-sanitize.md) | 2026-10-23 | Preview seed: SQL fixture + identity-breaking sanitizer, `--seed` jobs | agent-decided |
 | [0008](0008-local-compose-stack.md) | 2026-10-23 | Compose kept for local dev, platform-shaped (migrate job, `workout_rt`, PG18); Authentik bootstrap fix | agent-decided |
+
+## Status (2026-10-24)
+
+Deployed on the app platform: `9d50cc0` went live on the first `git push`, with passkey
+sign-in, cross-device persistence and rollback verified by Playwright
+(app-platform `docs/evidence/phase-1/` on `platform/phase-1`,
+eklavyamirani/app-platform#1). The adoption handoff file has been removed, as it asked.
+The platform took the contract requests: §6a/§12 corrected, logout callback URLs, edge
+security headers, `INHERIT FALSE, SET FALSE` runtime role. Seed hooks and `REASSIGN OWNED`
+after a clone are platform phase 2 (design §10).
+
+## Open follow-ups
+
+- Wire `--seed fixture|sanitize` (record 0007) into the platform's seed hooks once they
+  exist in phase 2.
+- Point this repo's `e2e/` suite at a platform URL with the WebAuthn virtual
+  authenticator (today it runs against `vite dev` with mocked OIDC; the platform repo has
+  its own workout-app E2E).
+- Local compose: replace Authentik with Pocket ID (record 0008).
+- Contract step for record 0004: `users.issuer/subject` `NOT NULL`, drop the email bridge.
+- CI: the tests now pull `postgres:18.6-alpine` and `edoburu/pgbouncer:v1.26.1-p0`.
+  CI publishes the nginx frontend image; the §7 prebuilt-image path would need the
+  `Dockerfile.static` `site` stage.

@@ -108,12 +108,25 @@ npx playwright test --grep "ballet"
 ```
 
 ### Backend Integration Tests
-The API has 13 integration tests using xUnit + Testcontainers (real PostgreSQL):
+The API's xUnit tests use Testcontainers with real PostgreSQL 18 and PgBouncer (transaction
+mode, as on the app platform), so they need a Docker daemon (on macOS: `colima start`). The
+.NET SDK is pinned in `mise.toml`:
 
 ```bash
-cd server/server.Tests
-dotnet test
+mise install
+dotnet test server/server.Tests
 ```
+
+### Platform Contract Smoke Test
+Runs the API image the way the app platform will (migrate job as the owner, API as the
+runtime role behind PgBouncer, read-only root filesystem, non-root):
+
+```bash
+bash scripts/test-platform-contract.sh
+```
+
+To run the API outside containers, apply the schema first with
+`dotnet run --project server -- --migrate`; the API never migrates on startup.
 
 ### Docker-compose Health Checks
 Verifies all services start and respond correctly:
@@ -145,10 +158,15 @@ The E2E test suite covers:
 - **Calendar** (3 tests) — Rolling calendar, scheduling
 - **Import/Export** (6 tests) — Program export, import, validation
 - **Multi-Program** (2 tests) — Managing multiple program types together
-- **OIDC** (5 tests) — Sign-in discovery endpoints, sign-out session clearing
+- **OIDC** (6 tests) — Sign-in discovery endpoints, RP-initiated sign-out, session clearing
 
 ## Deployment
-See `deploy/README.md` for full-stack container deployment with Traefik, Authentik, and zero-downtime rollout.
+Deployed environments run on the app platform (`eklavyamirani/app-platform`) from
+`platform.toml`: static SPA served by the platform edge, `api` service on `/api/*`, Postgres
+with a separate runtime role, and sign-in through the platform's Pocket ID. Decisions are in
+`docs/decisions/`; open items in `docs/handoff/platform-adopt.md`.
+
+`deploy/README.md` describes the local full-stack environment (Traefik, Authentik, Postgres).
 
 ## Project Structure
 
@@ -167,9 +185,10 @@ src/
 server/             — ASP.NET Core 8 Minimal API
   Endpoints/        — POST /api/sync/push, GET /api/sync/pull
   Middleware/        — JWT → user resolution + RLS
-  Data/             — PostgreSQL schema + connection helper
+  Data/             — PostgreSQL schema, migrator (--migrate), seed scripts (--seed)
   server.Tests/     — xUnit integration tests (Testcontainers)
 deploy/             — Docker, docker-compose, nginx
-scripts/            — Authentik setup, docker-compose test
+scripts/            — Authentik setup, docker-compose test, platform contract smoke test
+platform.toml       — App platform manifest
 e2e/                — Playwright E2E tests
 ```

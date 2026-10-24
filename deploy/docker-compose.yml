@@ -1,3 +1,5 @@
+# Local development stack only. Deployed environments run on the app platform from
+# platform.toml (platform design §7); this file is not used there.
 services:
   # --- Reverse proxy ---
   traefik:
@@ -39,11 +41,32 @@ services:
     labels:
       - traefik.enable=false
 
-  # --- API ---
-  api:
+  # --- Migration job (runs to completion before the API starts) ---
+  # Mirrors the platform's [database] migrate job: database owner + DATABASE_RUNTIME_ROLE.
+  migrate:
     build:
       context: ../server
       dockerfile: Dockerfile
+    image: workout-app-api:local
+    command: ["--migrate"]
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    environment:
+      DATABASE_URL: "postgres://workout@db:5432/workout"
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres-password
+      DATABASE_RUNTIME_ROLE: workout_rt
+    secrets:
+      - postgres-password
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      - traefik.enable=false
+
+  # --- API ---
+  api:
     image: workout-app-api:local
     restart: unless-stopped
     read_only: true
@@ -51,23 +74,19 @@ services:
       - /tmp:rw,noexec,nosuid,size=32m
       - /app/tmp:rw,noexec,nosuid,size=32m
     environment:
-      # Connection information never contains the password; it is read from a mounted file.
-      ConnectionStrings__Default: "Host=db;Port=5432;Database=workout;Username=workout_app"
-      ConnectionStrings__Default__PasswordFile: /run/secrets/app-role-password
-      # Schema/role bootstrap runs with an administrative connection; the runtime
-      # connection above is a non-superuser role so RLS is enforced.
-      ConnectionStrings__Admin: "Host=db;Port=5432;Database=workout;Username=workout"
-      ConnectionStrings__Admin__PasswordFile: /run/secrets/postgres-password
-      Database__AppRolePasswordFile: /run/secrets/app-role-password
+      # Runtime contract shape (platform design §6b.1): the URL carries no password; it is
+      # read from the mounted file. The API connects as the NOBYPASSRLS runtime role so RLS
+      # is enforced; it never migrates.
+      DATABASE_URL: "postgres://workout_rt@db:5432/workout"
+      DATABASE_PASSWORD_FILE: /run/secrets/app-role-password
       Auth__Issuer: "http://localhost/application/o/workout-app/"
       Auth__MetadataAddress: "http://authentik-server:9000/application/o/workout-app/.well-known/openid-configuration"
       Auth__ClientId: "workout-app"
     secrets:
-      - postgres-password
       - app-role-password
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       # The API image intentionally ships no curl/wget; use bash's /dev/tcp instead.
       test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5000 && printf 'GET /api/health HTTP/1.0\r\n\r\n' >&3 && grep -q '\"status\":\"healthy\"' <&3"]
@@ -80,7 +99,9 @@ services:
 
   # --- App database ---
   db:
-    image: postgres:16-alpine
+    # Same major version as the platform (design §5). PG18 images keep data under
+    # /var/lib/postgresql/18/docker, so the volume mounts the parent directory.
+    image: postgres:18.6-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: workout
@@ -88,8 +109,10 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
     secrets:
       - postgres-password
+      - app-role-password
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
+      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U workout"]
       interval: 10s
@@ -129,6 +152,11 @@ services:
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__NAME: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD-authentik}
+      # The worker applies the system/bootstrap.yaml blueprint, so it needs these too;
+      # without them the admin API token used by scripts/setup-authentik.sh never exists.
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD-admin}
+      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL-admin@localhost}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN-test-admin-token}
     depends_on:
       authentik-db:
         condition: service_healthy

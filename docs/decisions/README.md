@@ -14,3 +14,4 @@ sequentially, never renumber.
 | [0005](0005-read-config-from-runtime-contract.md) | 2026-10-23 | `DATABASE_URL`, `OIDC_*`, `PLATFORM_CA_FILE`, `PORT`; standard OIDC logout | agent-decided |
 | [0006](0006-platform-manifest.md) | 2026-10-23 | `platform.toml` = §7 example + `[previews]`; scratch site stage; contract smoke script | agent-decided |
 | [0007](0007-preview-seed-fixture-and-sanitize.md) | 2026-10-23 | Preview seed: SQL fixture + identity-breaking sanitizer, `--seed` jobs | agent-decided |
+| [0008](0008-local-compose-stack.md) | 2026-10-23 | Compose kept for local dev, platform-shaped (migrate job, `workout_rt`, PG18); Authentik bootstrap fix | agent-decided |

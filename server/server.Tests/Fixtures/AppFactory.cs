@@ -82,7 +82,12 @@ public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
         }
     }
 
-    async Task IAsyncLifetime.DisposeAsync()
+    protected string PoolerHost => _pgBouncer!.Host;
+    protected ushort PoolerPort => _pgBouncer!.HostPort;
+
+    async Task IAsyncLifetime.DisposeAsync() => await DisposeResourcesAsync();
+
+    protected virtual async Task DisposeResourcesAsync()
     {
         if (_pgBouncer is not null)
         {
@@ -92,10 +97,28 @@ public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
         await _network.DisposeAsync();
     }
 
+    /// <summary>When true, JWT validation is replaced by <see cref="TestAuthHandler"/>.</summary>
+    protected virtual bool UseTestAuth => true;
+
+    /// <summary>Settings the host reads at startup (configuration keys or contract env names).</summary>
+    protected virtual IEnumerable<KeyValuePair<string, string>> HostSettings()
+    {
+        yield return new("ConnectionStrings:Default", ConnectionString);
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // Provide connection settings via configuration so they are available at startup.
-        builder.UseSetting("ConnectionStrings:Default", ConnectionString);
+        // Provide settings via configuration so they are available at startup.
+        foreach (var (key, value) in HostSettings())
+        {
+            builder.UseSetting(key, value);
+        }
+
+        builder.UseEnvironment("Testing");
+        if (!UseTestAuth)
+        {
+            return;
+        }
 
         builder.ConfigureServices(services =>
         {
@@ -108,8 +131,6 @@ public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
             .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
                 TestAuthHandler.SchemeName, _ => { });
         });
-
-        builder.UseEnvironment("Testing");
     }
 
     public HttpClient CreateAuthenticatedClient(string email)
@@ -118,10 +139,67 @@ public class AppFactory : WebApplicationFactory<Program>, IAsyncLifetime
         client.DefaultRequestHeaders.Add(TestAuthHandler.TestEmailHeader, email);
         return client;
     }
+
+    /// <summary>A client whose token carries exactly these claims (no email when null).</summary>
+    public HttpClient CreateClientForIdentity(string issuer, string subject, string? email = null)
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.TestIssuerHeader, issuer);
+        client.DefaultRequestHeaders.Add(TestAuthHandler.TestSubjectHeader, subject);
+        if (email is not null)
+        {
+            client.DefaultRequestHeaders.Add(TestAuthHandler.TestEmailHeader, email);
+        }
+        return client;
+    }
 }
 
 /// <summary>The API behind PgBouncer in transaction mode with one server connection.</summary>
 public class PooledAppFactory : AppFactory
 {
     protected override bool UsePooler => true;
+}
+
+/// <summary>
+/// The API configured only through runtime contract v1 (design §6b.1), as a platform pod:
+/// <c>DATABASE_URL</c> without a password plus <c>DATABASE_PASSWORD_FILE</c>, through the
+/// transaction pooler; <c>OIDC_*</c> and <c>PLATFORM_CA_FILE</c> pointing at an HTTPS issuer
+/// signed by a private CA; real JWT bearer validation.
+/// </summary>
+public class ContractAppFactory : AppFactory
+{
+    public const string ClientId = "workout-app-test";
+
+    private readonly string _passwordFile =
+        Path.Combine(Path.GetTempPath(), $"workout-app-db-password-{Guid.NewGuid():N}");
+
+    public StubIdentityProvider Idp { get; } = new();
+
+    protected override bool UsePooler => true;
+    protected override bool UseTestAuth => false;
+
+    public override async Task InitializeAsync()
+    {
+        await base.InitializeAsync();
+        await File.WriteAllTextAsync(_passwordFile, Database.RuntimePassword + "\n");
+        await Idp.StartAsync();
+    }
+
+    protected override IEnumerable<KeyValuePair<string, string>> HostSettings()
+    {
+        yield return new("DATABASE_URL",
+            $"postgres://{Database.RuntimeRole}@{PoolerHost}:{PoolerPort}/{Database.Database}");
+        yield return new("DATABASE_PASSWORD_FILE", _passwordFile);
+        yield return new("OIDC_ISSUER", Idp.Issuer);
+        yield return new("OIDC_CLIENT_ID", ClientId);
+        yield return new("OIDC_AUDIENCE", ClientId);
+        yield return new("PLATFORM_CA_FILE", Idp.CaBundlePath);
+    }
+
+    protected override async Task DisposeResourcesAsync()
+    {
+        await Idp.DisposeAsync();
+        File.Delete(_passwordFile);
+        await base.DisposeResourcesAsync();
+    }
 }

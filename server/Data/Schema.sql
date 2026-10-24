@@ -6,9 +6,22 @@
 
 CREATE TABLE IF NOT EXISTS users (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email       TEXT UNIQUE NOT NULL,
+  issuer      TEXT,
+  subject     TEXT,
+  email       TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Users are identified by the token's (iss, sub): Pocket ID access tokens carry no email
+-- claim, and email is mutable. Email is informational, and links pre-existing email-keyed
+-- rows once (expand step; see docs/decisions/0004). Rows created before this change have a
+-- NULL issuer/subject until their owner next signs in.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS issuer TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subject TEXT;
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
+CREATE UNIQUE INDEX IF NOT EXISTS users_identity ON users (issuer, subject);
+CREATE INDEX IF NOT EXISTS users_unlinked_email ON users (email) WHERE subject IS NULL;
 
 CREATE TABLE IF NOT EXISTS user_data (
   user_id     UUID NOT NULL REFERENCES users(id),

@@ -217,14 +217,16 @@ jobs:
           cat > runtime/runtime-config-a.json <<'JSON'
           {
             "apiBaseUrl": "http://127.0.0.1:5000",
-            "deploymentMode": "preview-a"
+            "deploymentMode": "preview-a",
+            "oidcAuthority": "https://auth.preview-a.example/application/o/workout-app/"
           }
           JSON
 
           cat > runtime/runtime-config-b.json <<'JSON'
           {
             "apiBaseUrl": "http://127.0.0.1:5000",
-            "deploymentMode": "preview-b"
+            "deploymentMode": "preview-b",
+            "oidcAuthority": "https://auth.preview-b.example/application/o/workout-app"
           }
           JSON
 
@@ -246,6 +248,8 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:4173/runtime-config.json > report/runtime/frontend-a-runtime-config.json
+          curl -fsSI http://127.0.0.1:4173/ > report/runtime/frontend-a-headers.txt
+          grep -Fi "connect-src 'self' https://auth.preview-a.example" report/runtime/frontend-a-headers.txt
 
           docker run -d --name frontend-runtime-b \
             --read-only \
@@ -263,6 +267,8 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:4174/runtime-config.json > report/runtime/frontend-b-runtime-config.json
+          curl -fsSI http://127.0.0.1:4174/ > report/runtime/frontend-b-headers.txt
+          grep -Fi "connect-src 'self' https://auth.preview-b.example" report/runtime/frontend-b-headers.txt
 
           jq -e '.deploymentMode == "preview-a"' report/runtime/frontend-a-runtime-config.json > /dev/null
           jq -e '.deploymentMode == "preview-b"' report/runtime/frontend-b-runtime-config.json > /dev/null

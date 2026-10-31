@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { enterAnonymousMode } from './helpers';
 
 test.describe('Session Tracking', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can start and complete a duration-based session', async ({ page }) => {

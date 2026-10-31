@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { enterAnonymousMode } from './helpers';
 
 test.describe('Multi-Program Workflow', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('can manage GZCLP, violin, and ballet programs together', async ({ page }) => {

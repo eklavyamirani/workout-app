@@ -1,0 +1,4 @@
+bin/
+obj/
+server.Tests/bin/
+server.Tests/obj/

@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Dumbbell, Plus, Calendar } from 'lucide-react';
+import { Dumbbell, Plus, Calendar, LogOut, LogIn } from 'lucide-react';
 import { storage, programStorage, activityStorage, sessionStorage } from './storage/adapter';
+import { isAuthenticated, isAnonymous, getEmailFromToken } from './storage/auth';
+import { logout, isOidcConfigured, login } from './storage/oidc';
+import { syncPull, initSyncListeners } from './storage/sync';
+import { SyncStatus } from './components/SyncStatus';
+import { Toast } from './components/Toast';
 import { ProgramList } from './components/ProgramList';
 import { CreateProgram } from './components/CreateProgram';
 import { GZCLPSetup } from './components/GZCLPSetup';
@@ -25,6 +30,18 @@ export default function App() {
 
   useEffect(() => {
     loadData();
+    initSyncListeners();
+
+    // Refresh data when sync pulls new changes
+    const onSyncUpdate = () => loadData();
+    window.addEventListener('sync:updated', onSyncUpdate);
+
+    // Initial pull if authenticated
+    if (isAuthenticated()) {
+      syncPull().catch(console.error);
+    }
+
+    return () => window.removeEventListener('sync:updated', onSyncUpdate);
   }, []);
 
   async function loadData() {
@@ -266,26 +283,52 @@ export default function App() {
               <h1 className="text-xl font-bold text-gray-900">Workout Tracker</h1>
             </div>
 
-            <nav className="flex gap-2">
-              <button
-                onClick={() => setView('home')}
-                className={`flex items-center gap-1 px-3 py-2 rounded-lg transition-colors ${
-                  view === 'home' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Calendar</span>
-              </button>
-              <button
-                onClick={() => setView('programs')}
-                className={`flex items-center gap-1 px-3 py-2 rounded-lg transition-colors ${
-                  view === 'programs' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <Plus className="w-4 h-4" />
-                <span>Programs</span>
-              </button>
-            </nav>
+            <div className="flex items-center gap-3">
+              <nav className="flex gap-2">
+                <button
+                  onClick={() => setView('home')}
+                  className={`flex items-center gap-1 px-3 py-2 rounded-lg transition-colors ${
+                    view === 'home' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Calendar</span>
+                </button>
+                <button
+                  onClick={() => setView('programs')}
+                  className={`flex items-center gap-1 px-3 py-2 rounded-lg transition-colors ${
+                    view === 'programs' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Programs</span>
+                </button>
+              </nav>
+
+              {isAuthenticated() && (
+                <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+                  <SyncStatus />
+                  <span className="text-xs text-gray-500 hidden sm:inline">{getEmailFromToken()}</span>
+                  <button
+                    onClick={logout}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                    title="Sign out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {isAnonymous() && isOidcConfigured() && (
+                <button
+                  onClick={() => login()}
+                  className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 pl-2 border-l border-gray-200"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Sign in to sync</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -329,6 +372,7 @@ export default function App() {
           />
         )}
       </div>
+      <Toast />
     </div>
   );
 }

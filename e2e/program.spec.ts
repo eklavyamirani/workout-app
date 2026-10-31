@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterAnonymousMode } from './helpers';
 
 test.describe('Program Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -6,6 +7,7 @@ test.describe('Program Management', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await enterAnonymousMode(page);
   });
 
   test('shows empty state when no programs exist', async ({ page }) => {

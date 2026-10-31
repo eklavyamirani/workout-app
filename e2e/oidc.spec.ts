@@ -5,8 +5,9 @@ import { test, expect } from '@playwright/test';
  *
  * 1. Sign-in uses the OIDC discovery document's authorization_endpoint
  *    (not a manually constructed URL from the authority).
- * 2. Sign-out redirects through the IdP invalidation flow so the
- *    server-side session is ended and the next sign-in shows a login form.
+ * 2. Sign-out goes through the discovery end_session_endpoint (RP-initiated
+ *    logout) with client_id, post_logout_redirect_uri and id_token_hint, so the
+ *    IdP session ends and the user returns to the app (Authentik or Pocket ID).
  */
 
 // Fake OIDC discovery document matching what Authentik would return
@@ -155,24 +156,33 @@ test.describe('OIDC sign-in', () => {
 });
 
 test.describe('OIDC sign-out', () => {
-  test('sign-out redirects through IdP invalidation flow', async ({ page }) => {
-    // Start with an authenticated session
+  const isEndSession = (url: URL) => url.pathname === '/application/o/workout-app/end-session/';
+
+  async function signInWithFakeTokens(page: import('@playwright/test').Page): Promise<string> {
+    const token = fakeJwt();
+    await page.route('**/application/o/workout-app/.well-known/openid-configuration', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_DISCOVERY) }),
+    );
     await page.goto('/');
     await page.evaluate(({ token }) => {
       localStorage.setItem('__auth_token', token);
+      localStorage.setItem('__auth_id_token', token);
       localStorage.setItem('__auth_mode', 'authenticated');
-    }, { token: fakeJwt() });
+      localStorage.setItem('__auth_refresh_token', 'fake-refresh');
+    }, { token });
     await page.reload();
-
-    // Wait for the app to load
     await expect(page.getByTitle('Sign out')).toBeVisible({ timeout: 5000 });
+    return token;
+  }
 
-    // Intercept the invalidation flow redirect
-    let invalidationUrl: string | null = null;
-    await page.route('**/flows/-/default/invalidation/**', route => {
-      invalidationUrl = route.request().url();
-      // Redirect back to the app as the real flow would. WebKit refuses
-      // route.fulfill() with a 3xx status, so emulate the redirect with HTML.
+  test('sign-out goes through the discovery end_session_endpoint with a return URL', async ({ page }) => {
+    const idToken = await signInWithFakeTokens(page);
+
+    let endSessionUrl: URL | null = null;
+    await page.route(isEndSession, route => {
+      endSessionUrl = new URL(route.request().url());
+      // Redirect back to the app as the IdP would. WebKit refuses route.fulfill() with a
+      // 3xx status, so emulate the redirect with HTML.
       route.fulfill({
         status: 200,
         contentType: 'text/html',
@@ -180,32 +190,21 @@ test.describe('OIDC sign-out', () => {
       });
     });
 
-    // Click sign-out
     await page.getByTitle('Sign out').click();
-    await page.waitForTimeout(2000);
+    await expect.poll(() => endSessionUrl).not.toBeNull();
 
-    // Should have redirected through the invalidation flow
-    expect(invalidationUrl).not.toBeNull();
-    expect(invalidationUrl).toContain('/flows/-/default/invalidation/');
-    // Must include next=/ so the user comes back to the app
-    expect(invalidationUrl).toContain('next=');
+    const params = endSessionUrl!.searchParams;
+    expect(params.get('client_id')).toBe('workout-app');
+    expect(params.get('post_logout_redirect_uri')).toBe('http://localhost:5173/');
+    // Pocket ID only redirects back when given the ID token as a hint.
+    expect(params.get('id_token_hint')).toBe(idToken);
   });
 
   test('sign-out clears local auth state before navigating to IdP', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(({ token }) => {
-      localStorage.setItem('__auth_token', token);
-      localStorage.setItem('__auth_mode', 'authenticated');
-      localStorage.setItem('__auth_refresh_token', 'fake-refresh');
-    }, { token: fakeJwt() });
-    await page.reload();
+    await signInWithFakeTokens(page);
 
-    await expect(page.getByTitle('Sign out')).toBeVisible({ timeout: 5000 });
-
-    // Intercept the invalidation flow and redirect back to the app origin
-    // (simulates the real invalidation flow's ?next=/ behavior)
     const baseUrl = page.url().replace(/\/$/, '');
-    await page.route('**/flows/-/default/invalidation/**', route =>
+    await page.route(isEndSession, route =>
       route.fulfill({
         status: 200,
         contentType: 'text/html',
@@ -215,49 +214,36 @@ test.describe('OIDC sign-out', () => {
 
     await page.getByTitle('Sign out').click();
 
-    // After the invalidation flow redirects back, the auth gate should appear
-    // (because clearAuth() set __auth_mode to 'anonymous' and removed the token)
+    // After the IdP redirects back, the auth gate should appear
+    // (because clearAuth() set __auth_mode to 'anonymous' and removed the tokens)
     await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible({ timeout: 10000 });
     await expect(page.getByTitle('Sign out')).not.toBeVisible();
 
-    // Verify localStorage was cleared
     const authState = await page.evaluate(() => ({
       authMode: localStorage.getItem('__auth_mode'),
       token: localStorage.getItem('__auth_token'),
+      idToken: localStorage.getItem('__auth_id_token'),
       refresh: localStorage.getItem('__auth_refresh_token'),
     }));
     expect(authState.authMode).toBe('anonymous');
     expect(authState.token).toBeNull();
+    expect(authState.idToken).toBeNull();
     expect(authState.refresh).toBeNull();
   });
 
-  test('sign-out without OIDC config falls back to reload', async ({ page }) => {
-    // Unset OIDC authority so logout falls back to window.location.reload()
-    await page.addInitScript(() => {
-      // Override import.meta.env after Vite injects it
-      Object.defineProperty(window, '__VITE_OIDC_OVERRIDE__', { value: true });
-    });
-
+  test('sign-out without a reachable IdP still signs out locally', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(({ token }) => {
       localStorage.setItem('__auth_token', token);
       localStorage.setItem('__auth_mode', 'authenticated');
     }, { token: fakeJwt() });
+    await page.route('**/.well-known/openid-configuration', route => route.fulfill({ status: 503 }));
     await page.reload();
-
-    // When OIDC IS configured, the Sign out button exists and
-    // logout() will redirect through the invalidation flow.
-    // We already test that path above. Here we just verify that
-    // clearAuth() always runs by checking a mock-authenticated logout.
-    await page.route('**/flows/-/default/invalidation/**', route =>
-      route.fulfill({ status: 200, body: '<html></html>', contentType: 'text/html' }),
-    );
 
     await expect(page.getByTitle('Sign out')).toBeVisible({ timeout: 5000 });
     await page.getByTitle('Sign out').click();
-    await page.waitForTimeout(2000);
 
-    // Auth token should have been cleared (clearAuth runs synchronously)
+    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible({ timeout: 10000 });
     const token = await page.evaluate(() => localStorage.getItem('__auth_token'));
     expect(token).toBeNull();
   });

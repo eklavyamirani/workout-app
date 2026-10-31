@@ -1,23 +1,27 @@
--- === Roles ===
--- 'workout_app' is the least-privilege role the API connects as at runtime.
--- It is deliberately NOT a superuser so that row-level security is enforced.
--- This script is executed with an administrative connection (see AppDb.InitializeAsync).
-
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'workout_app') THEN
-    CREATE ROLE workout_app LOGIN NOSUPERUSER NOBYPASSRLS;
-  END IF;
-END
-$$;
+-- Applied by `dotnet server.dll --migrate` (Data/Migrator.cs) as the database owner, in
+-- one transaction. Roles are owned by the platform (design §5.1): this script never creates
+-- or alters roles. Every statement is idempotent; production changes are expand/contract.
 
 -- === Tables ===
 
 CREATE TABLE IF NOT EXISTS users (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email       TEXT UNIQUE NOT NULL,
+  issuer      TEXT,
+  subject     TEXT,
+  email       TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Users are identified by the token's (iss, sub): Pocket ID access tokens carry no email
+-- claim, and email is mutable. Email is informational, and links pre-existing email-keyed
+-- rows once (expand step; see docs/decisions/0004). Rows created before this change have a
+-- NULL issuer/subject until their owner next signs in.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS issuer TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subject TEXT;
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
+CREATE UNIQUE INDEX IF NOT EXISTS users_identity ON users (issuer, subject);
+CREATE INDEX IF NOT EXISTS users_unlinked_email ON users (email) WHERE subject IS NULL;
 
 CREATE TABLE IF NOT EXISTS user_data (
   user_id     UUID NOT NULL REFERENCES users(id),
@@ -54,8 +58,23 @@ BEGIN
 END
 $$;
 
--- Grant the app role access (RLS policies still apply)
-GRANT USAGE ON SCHEMA public TO workout_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON user_data TO workout_app;
--- UPDATE is required by the ON CONFLICT ... DO UPDATE upsert in UserResolverMiddleware.
-GRANT SELECT, INSERT, UPDATE ON users TO workout_app;
+-- === Runtime role grants ===
+-- With `runtime_role = true` the platform creates a separate NOSUPERUSER NOBYPASSRLS role and
+-- passes its name as DATABASE_RUNTIME_ROLE; Migrator exposes it as 'workout.runtime_role'.
+-- Without one, the API runs as the owner, which FORCE ROW LEVEL SECURITY still constrains.
+DO $$
+DECLARE
+  rt text := nullif(current_setting('workout.runtime_role', true), '');
+BEGIN
+  IF rt IS NULL THEN
+    RETURN;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = rt) THEN
+    RAISE EXCEPTION 'runtime role "%" does not exist (it is created by the platform)', rt;
+  END IF;
+  EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', rt);
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON user_data TO %I', rt);
+  -- UPDATE is required by the ON CONFLICT ... DO UPDATE upsert in UserResolverMiddleware.
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE ON users TO %I', rt);
+END
+$$;

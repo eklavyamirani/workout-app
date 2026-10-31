@@ -1,4 +1,4 @@
-import { setAuthToken, clearAuth, getToken } from './auth';
+import { setAuthToken, setIdToken, getIdToken, clearAuth, getToken } from './auth';
 import { getRuntimeConfig } from './runtimeConfig';
 
 // OIDC configuration comes from the mounted runtime configuration so that no
@@ -140,6 +140,9 @@ export async function handleCallback(code: string, state: string): Promise<void>
 
   // Store the access token (sets auth mode to authenticated)
   setAuthToken(accessToken);
+  if (tokens.id_token) {
+    setIdToken(tokens.id_token);
+  }
 
   // Store refresh token if provided
   if (tokens.refresh_token) {
@@ -193,19 +196,30 @@ export async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
-export function logout(): void {
+export async function logout(): Promise<void> {
+  const idToken = getIdToken();
   localStorage.removeItem('__auth_refresh_token');
   clearAuth();
 
-  // End the IdP session by redirecting through the invalidation flow.
-  // The flow logs the user out and redirects back to the app via ?next=.
-  const { authority } = getConfig();
+  // End the IdP session through the standard RP-initiated logout endpoint from discovery
+  // (OIDC RP-Initiated Logout 1.0). Pocket ID redirects back to post_logout_redirect_uri only
+  // with an id_token_hint and a registered logout callback URL; without them it shows its
+  // own signed-out page.
+  const { authority, clientId, redirectUri } = getConfig();
   if (authority) {
-    // Derive the IdP base from the authority (e.g. "http://localhost/application/o/workout-app" → "http://localhost")
-    const authorityUrl = new URL(authority);
-    const idpBase = authorityUrl.origin;
-    window.location.href = `${idpBase}/flows/-/default/invalidation/?next=/`;
-    return;
+    try {
+      const { end_session_endpoint } = await getDiscoveryEndpoints();
+      if (end_session_endpoint) {
+        const params = new URLSearchParams();
+        if (clientId) params.set('client_id', clientId);
+        if (redirectUri) params.set('post_logout_redirect_uri', redirectUri);
+        if (idToken) params.set('id_token_hint', idToken);
+        window.location.href = `${end_session_endpoint}?${params.toString()}`;
+        return;
+      }
+    } catch {
+      // Discovery unavailable: the local sign-out above still applies.
+    }
   }
 
   window.location.reload();

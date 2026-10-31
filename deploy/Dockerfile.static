@@ -1,0 +1,18 @@
+## syntax=docker/dockerfile:1
+# Static frontend for the app platform (platform.toml [static], design §7): the `site`
+# stage's filesystem root *is* the site, and the platform edge serves it. No web server and
+# no deployment configuration are baked in: the edge serves /runtime-config.json rendered
+# from [static.runtime_config], so one image serves every environment.
+#
+# deploy/Dockerfile (nginx) remains the image for the local docker-compose stack.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY . .
+# public/runtime-config.json is the local-dev default; on the platform the edge's rendered
+# file must be the only one.
+RUN npm run build && rm -f dist/runtime-config.json
+
+FROM scratch AS site
+COPY --from=build /app/dist /

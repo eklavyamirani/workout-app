@@ -1,0 +1,39 @@
+# App manifest for the app platform (eklavyamirani/app-platform, docs/design.md §7 and
+# record 0002). Local development uses deploy/docker-compose.yml instead.
+name = "workout-app"
+
+[static]
+dockerfile = "deploy/Dockerfile.static"
+context = "."
+target = "site"                 # FROM scratch AS site; COPY --from=build /app/dist /
+spa = true                      # unknown paths → /index.html
+[static.runtime_config]         # served at /runtime-config.json (src/storage/runtimeConfig.ts)
+oidcAuthority = "${OIDC_ISSUER}"
+oidcClientId = "${OIDC_CLIENT_ID}"
+oidcRedirectUri = "${PLATFORM_PUBLIC_URL}/"
+deploymentMode = "${PLATFORM_ENV}"
+# apiBaseUrl is omitted: the SPA calls same-origin /api, which the edge routes below.
+
+[services.api]
+dockerfile = "server/Dockerfile"
+context = "server"
+port = 5000
+health = "/api/health"
+routes = ["/api/*"]             # path routing at the edge (§8); rest → static
+
+[database]
+migrate = "dotnet server.dll --migrate"   # owner role + DATABASE_RUNTIME_ROLE (§6b.1)
+migrate_service = "api"
+runtime_role = true             # API connects as <db>_rt (NOBYPASSRLS); RLS on user_data
+
+[auth]
+enabled = true
+mode = "oidc"                   # SPA does OIDC + PKCE; API validates aud = workout-app-<env>
+
+[previews]
+enabled = true
+seed = "fixture"                # server/Data/Seed/fixture.sql (record 0007)
+# Seed hooks (platform record 0008): run like migrate (api image, owner role) against
+# <app>_seed_next; the platform clones the frozen seed copy-on-write per preview.
+fixture = "dotnet server.dll --seed fixture"    # after migrate, when seed = "fixture"
+sanitize = "dotnet server.dll --seed sanitize"  # after loading a prod dump, when seed = "staging"

@@ -1,6 +1,12 @@
-# Deployment Guide
+# Local full-stack environment
 
-This directory contains the full-stack deployment configuration: frontend (nginx), API (ASP.NET Core), database (PostgreSQL), identity provider (Authentik), and reverse proxy (Traefik).
+This directory contains the **local development** stack: frontend (nginx), API (ASP.NET Core), database (PostgreSQL), identity provider (Authentik), and reverse proxy (Traefik).
+
+Deployed environments (prod, previews) run on the app platform from `../platform.toml`
+(platform design §7); they use `Dockerfile.static` for the frontend and the platform's
+Postgres, PgBouncer, Pocket ID and edge instead of the services below. The compose stack is
+shaped like the platform where it matters: a one-shot `migrate` job runs as the database
+owner, and the API connects as a separate NOBYPASSRLS runtime role through `DATABASE_URL`.
 
 ## Architecture
 
@@ -23,8 +29,9 @@ This directory contains the full-stack deployment configuration: frontend (nginx
 |---------|-------|---------|
 | **traefik** | `traefik:v3.3` | Reverse proxy, file-based path routing (`traefik-dynamic.yml`) |
 | **workout-app** | Built from `deploy/Dockerfile` | Static frontend (nginx) |
-| **api** | Built from `server/Dockerfile` | ASP.NET Core sync API |
-| **db** | `postgres:16-alpine` | App data (user_data + RLS) |
+| **migrate** | Same image as `api` | One-shot `--migrate` job as the DB owner; grants `workout_rt` |
+| **api** | Built from `server/Dockerfile` | ASP.NET Core sync API (runtime role `workout_rt`) |
+| **db** | `postgres:18.6-alpine` | App data (user_data + RLS); `initdb/` creates `workout_rt` |
 | **authentik-server** | `ghcr.io/goauthentik/server:2024.2` | OIDC identity provider |
 | **authentik-worker** | Same as above | Background tasks |
 | **authentik-db** | `postgres:16-alpine` | Authentik data |
@@ -61,6 +68,10 @@ mkdir -p secrets
 openssl rand -hex 24 > secrets/postgres-password
 openssl rand -hex 24 > secrets/app-role-password
 ```
+
+The runtime role is created from `secrets/app-role-password` when the database volume is
+first initialised. Volumes from before the Postgres 18 / `workout_rt` switch are not
+compatible (there is no real data yet): run `docker compose down -v` once.
 
 `deploy/secrets/` is gitignored. The API reads the password from the mounted file and never
 requires a secret-bearing environment variable.
@@ -124,18 +135,23 @@ Compose uses healthchecks to keep the previous containers running until new ones
 
 ## API Configuration
 
-The API container accepts these environment variables:
+The API reads the platform's runtime contract (platform design §6b.1); compose sets the same
+variables. Older `ConnectionStrings__*` / `Auth__*` keys remain as fallbacks for `dotnet run`.
 
 | Variable | Purpose |
 |----------|---------|
-| `ConnectionStrings__Default` | PostgreSQL connection info for the runtime (non-superuser) role — **without** a password |
-| `ConnectionStrings__Default__PasswordFile` | Path to the mounted file holding the runtime role password |
-| `ConnectionStrings__Admin` | Optional administrative connection used only for schema/role bootstrap |
-| `ConnectionStrings__Admin__PasswordFile` | Path to the mounted file holding the administrative password |
-| `Database__AppRolePasswordFile` | Path to the file whose contents become the `workout_app` role password |
-| `Auth__Issuer` | JWT issuer URL (external, matches token `iss` claim) |
-| `Auth__MetadataAddress` | OIDC discovery URL (internal, for JWKS fetching) |
-| `Auth__ClientId` | OIDC client ID (audience validation) |
+| `DATABASE_URL` | `postgres://<role>@<host>:<port>/<db>` — owner role for `--migrate`, runtime role for the API; **without** a password |
+| `DATABASE_PASSWORD_FILE` | Path to the mounted file holding that role's password |
+| `DATABASE_RUNTIME_ROLE` | `--migrate` only: role that receives the API's grants |
+| `OIDC_ISSUER` / `Auth__Issuer` | JWT issuer URL (must match the token `iss`) |
+| `OIDC_AUDIENCE` (or `OIDC_CLIENT_ID`) / `Auth__ClientId` | Required token audience (`workout-app-<env>` on the platform) |
+| `PLATFORM_CA_FILE` | PEM bundle trusted for the IdP discovery/JWKS fetch (platform CA) |
+| `PORT` | Listen port (default 5000 from the image) |
+| `Auth__MetadataAddress` | Local compose only: OIDC discovery URL on the internal Docker network |
+
+Commands: `dotnet server.dll --migrate` applies `server/Data/Schema.sql`;
+`dotnet server.dll --seed fixture|sanitize` runs the preview seed scripts
+(`server/Data/Seed/`). The API itself never migrates.
 
 The split between `Auth__Issuer` and `Auth__MetadataAddress` allows the API to fetch signing keys from the internal Docker network (`http://authentik-server:9000/...`) while validating the external issuer URL (`http://localhost/...`) that appears in browser-issued JWTs.
 
@@ -143,8 +159,8 @@ The split between `Auth__Issuer` and `Auth__MetadataAddress` allows the API to f
 
 - Frontend: static build served by nginx with SPA fallback, security headers (CSP, XFO, etc.)
 - API: validates JWTs against Authentik's JWKS endpoint, enforces PostgreSQL Row-Level Security
-- The API connects as the non-superuser `workout_app` role so RLS is actually enforced; the
-  superuser connection is used only for schema and role bootstrap
+- The API connects as the non-superuser `workout_rt` role so RLS is actually enforced; only the
+  `migrate` job uses the owner connection. The app never creates or alters roles.
 - Both images run as numeric non-root users with read-only root filesystems and explicit tmpfs mounts
 - Traefik uses file-based routing (`traefik-dynamic.yml`) with priority ordering (Authentik=20, API=10, Frontend=1)
 - The `/api/v3` prefix is routed to Authentik (not the app API) for Authentik's internal API calls

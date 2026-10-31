@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using server.Models;
@@ -85,7 +86,10 @@ public class SyncPullTests : IClassFixture<AppFactory>
 
         Assert.NotNull(result);
         Assert.NotNull(result.ServerTime);
-        Assert.True(DateTime.TryParse(result.ServerTime, out var serverTime));
+        // AdjustToUniversal: a plain TryParse converts the "Z" timestamp to local time, which
+        // fails the comparison below on any machine west of UTC.
+        Assert.True(DateTime.TryParse(result.ServerTime, CultureInfo.InvariantCulture,
+            DateTimeStyles.AdjustToUniversal, out var serverTime));
         Assert.True(serverTime > DateTime.UtcNow.AddMinutes(-1));
     }
 

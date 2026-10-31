@@ -1,0 +1,4 @@
+# Build context for server/Dockerfile: restore and build inside the image only.
+bin
+obj
+server.Tests

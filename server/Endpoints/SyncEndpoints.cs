@@ -21,14 +21,14 @@ public static class SyncEndpoints
         if (user is null) return Results.Unauthorized();
 
         var conn = context.Items["DbConnection"] as NpgsqlConnection;
-        if (conn is null) return Results.StatusCode(500);
+        var transaction = context.Items["DbTransaction"] as NpgsqlTransaction;
+        if (conn is null || transaction is null) return Results.StatusCode(500);
 
         var results = new List<PushResultItem>();
 
-        // The whole batch is applied atomically so a malformed item cannot leave the
-        // client unable to tell which of its changes were persisted.
-        await using var transaction = await conn.BeginTransactionAsync();
-
+        // The whole batch is applied atomically in the request transaction (which carries the
+        // RLS user id) so a malformed item cannot leave the client unable to tell which of
+        // its changes were persisted. Commit before responding.
         foreach (var change in request.Changes)
         {
             var result = await ProcessPushChange(conn, transaction, user.Id, change);
@@ -192,7 +192,8 @@ public static class SyncEndpoints
         if (user is null) return Results.Unauthorized();
 
         var conn = context.Items["DbConnection"] as NpgsqlConnection;
-        if (conn is null) return Results.StatusCode(500);
+        var transaction = context.Items["DbTransaction"] as NpgsqlTransaction;
+        if (conn is null || transaction is null) return Results.StatusCode(500);
 
         var sinceDate = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
         if (!string.IsNullOrEmpty(since))
@@ -208,7 +209,7 @@ public static class SyncEndpoints
             SELECT key, value, version, updated_at, deleted
             FROM user_data
             WHERE user_id = @userId AND updated_at > @since
-            ORDER BY updated_at ASC", conn);
+            ORDER BY updated_at ASC", conn, transaction);
 
         cmd.Parameters.AddWithValue("userId", user.Id);
         cmd.Parameters.AddWithValue("since", sinceDate);

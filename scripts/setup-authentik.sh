@@ -28,6 +28,21 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
+# The health endpoint reports ready before the API serves requests and before the worker has
+# applied the bootstrap blueprint that creates the admin token (~2 min on a fresh volume).
+echo "Waiting for the Authentik API and bootstrap token..."
+for i in $(seq 1 90); do
+  if curl -sf -o /dev/null -H "${AUTH_HEADER}" "${API}/core/users/me/"; then
+    echo "Authentik API is ready."
+    break
+  fi
+  if [ "$i" -eq 90 ]; then
+    echo "ERROR: Authentik API did not accept the bootstrap token after 270s"
+    exit 1
+  fi
+  sleep 3
+done
+
 # Check if provider already exists
 EXISTING=$(curl -sf -H "${AUTH_HEADER}" "${API}/providers/oauth2/?search=${CLIENT_ID}" | python3 -c "import sys,json; print(json.load(sys.stdin)['pagination']['count'])" 2>/dev/null || echo "0")
 if [ "$EXISTING" != "0" ]; then

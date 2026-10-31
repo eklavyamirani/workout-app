@@ -1,0 +1,133 @@
+# Platform v2 (eklavyamirani/app-platform, docs/v2): build the API and web
+# images and push them to the platform's Azure Container Registry, tagged by
+# commit SHA. Argo CD on the cluster pulls them; this workflow never holds
+# cluster credentials. Azure login is OIDC federation (no stored secrets);
+# the federated credential only trusts this repository's main branch and
+# its own (non-fork) pull requests.
+#
+# Pull requests labelled "preview" also get a preview environment
+# (https://workout-pr-<n>.<domain>). The "preview" job waits until the
+# platform reports it running this commit, then marks the PR's GitHub
+# deployment "workout-pr-<n>" active with the URL (app-platform record 0033).
+# Closing the PR marks the deployment inactive once the platform removed it.
+#
+# Repository variables (set once by the owner): PLAT2_AZURE_CLIENT_ID,
+# PLAT2_AZURE_TENANT_ID, PLAT2_AZURE_SUBSCRIPTION_ID, PLAT2_ACR_NAME;
+# optional PLAT2_DOMAIN (default app.ekkylab.uk).
+name: Platform v2 images
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-v2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  STATUS_URL: https://previews.${{ vars.PLAT2_DOMAIN || 'app.ekkylab.uk' }}/api/status/workout-pr-${{ github.event.pull_request.number }}
+
+jobs:
+  images:
+    # PRs get a preview only with the "preview" label and only from this repo.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.action != 'closed' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       contains(github.event.pull_request.labels.*.name, 'preview'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.PLAT2_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.PLAT2_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.PLAT2_AZURE_SUBSCRIPTION_ID }}
+      - run: az acr login --name "${{ vars.PLAT2_ACR_NAME }}"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # Web first, API last: the platform runs migrations from the API image
+      # before it rolls any Deployment, so a rollout starts only after both
+      # images exist.
+      - name: Web image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          provenance: mode=max
+          tags: ${{ vars.PLAT2_ACR_NAME }}.azurecr.io/workout-web:${{ env.SHA }}
+      - name: API image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: server
+          file: server/Dockerfile
+          push: true
+          provenance: mode=max
+          tags: ${{ vars.PLAT2_ACR_NAME }}.azurecr.io/workout-api:${{ env.SHA }}
+
+  preview:
+    needs: images
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    # Argo CD polls GitHub for pull requests every 5 minutes, then clones the
+    # database and rolls out; 25 minutes leaves room for a slow first start.
+    timeout-minutes: 25
+    environment:
+      name: workout-pr-${{ github.event.pull_request.number }}
+      url: ${{ steps.ready.outputs.url }}
+    steps:
+      - id: ready
+        env:
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "Waiting for $STATUS_URL to report commit $SHA ready"
+          while :; do
+            s=$(curl -sS --max-time 10 "$STATUS_URL" || true)
+            if jq -e --arg sha "$SHA" '.ready and .sha == $sha' <<<"$s" >/dev/null 2>&1; then
+              url=$(jq -r .url <<<"$s")
+              echo "url=$url" >> "$GITHUB_OUTPUT"
+              echo "Preview ready: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "$(date -u +%T) ${s:-no answer}"
+            sleep 15
+          done
+
+  preview-closed:
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'preview')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      deployments: write
+    steps:
+      - name: Wait for the platform to remove the preview
+        run: |
+          until [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$STATUS_URL")" = 404 ]; do
+            echo "$(date -u +%T) still present"; sleep 15
+          done
+          echo "Preview workout-pr-${{ github.event.pull_request.number }} removed" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Mark the deployment inactive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENVIRONMENT: workout-pr-${{ github.event.pull_request.number }}
+        run: |
+          for id in $(gh api "repos/${{ github.repository }}/deployments?environment=$ENVIRONMENT" --jq '.[].id'); do
+            gh api -X POST "repos/${{ github.repository }}/deployments/$id/statuses" -f state=inactive >/dev/null
+            echo "deployment $id inactive"
+          done

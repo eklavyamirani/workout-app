@@ -123,6 +123,9 @@ export async function syncPull(): Promise<void> {
     // Skip locally dirty keys — they'll be resolved on next push
     if (meta?.dirty) continue;
 
+    // Skip versions we already have, e.g. our own push echoed back by the pull after it
+    if (meta && change.version <= meta.version) continue;
+
     if (change.deleted) {
       localDelete(change.key);
     } else if (change.value !== null && change.value !== undefined) {

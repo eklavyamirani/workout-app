@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen, Pencil, Video, X } from 'lucide-react';
 import type { Program, Activity, Session, ActivityLog, SetLog, RoutineEntry, BalletSection } from '../types';
 import { BalletGlossary } from './BalletGlossary';
@@ -84,7 +84,16 @@ export function SessionView({
   const [dismissedCarryForward, setDismissedCarryForward] = useState(false);
 
   const isBallet = program.type === 'ballet';
+  // Per-activity note drafts, keyed by activity id; saved into ActivityLog.notes (#34)
   const [activityNotes, setActivityNotes] = useState<Record<string, string>>({});
+
+  // Notes are saved while typing (#33). sessionRef holds the latest saved session so a
+  // delayed notes save never overwrites a set logged in the meantime.
+  const sessionRef = useRef(session);
+  const notesPending = useRef(false);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   // For weightlifting
   const [currentWeight, setCurrentWeight] = useState(0);
@@ -108,6 +117,48 @@ export function SessionView({
 
   const currentActivity = activities[currentActivityIndex];
   const currentLog = session.activities.find(a => a.activityId === currentActivity?.id);
+
+  // Fold the note drafts into a session, so every save carries them
+  function withNotes(base: Session): Session {
+    const logs = [...base.activities];
+    for (const [activityId, text] of Object.entries(activityNotes)) {
+      const index = logs.findIndex(a => a.activityId === activityId);
+      if (index >= 0) {
+        logs[index] = { ...logs[index], notes: text || undefined };
+      } else if (text) {
+        const activity = activities.find(a => a.id === activityId);
+        if (activity) logs.push({ activityId, trackingType: activity.trackingType, notes: text });
+      }
+    }
+    return { ...base, activities: logs, notes: notes || undefined };
+  }
+
+  function saveSession(updated: Session) {
+    const merged = withNotes(updated);
+    sessionRef.current = merged;
+    notesPending.current = false;
+    onUpdateSession(merged);
+  }
+
+  function flushNotes() {
+    if (notesPending.current) saveSession(sessionRef.current);
+  }
+
+  useEffect(() => {
+    if (!notesPending.current) return;
+    const timer = window.setTimeout(flushNotes, 600);
+    return () => clearTimeout(timer);
+  }, [notes, activityNotes]);
+
+  function editSessionNotes(text: string) {
+    notesPending.current = true;
+    setNotes(text);
+  }
+
+  function editActivityNotes(activityId: string, text: string) {
+    notesPending.current = true;
+    setActivityNotes(prev => ({ ...prev, [activityId]: text }));
+  }
 
   useEffect(() => {
     let interval: number | undefined;
@@ -146,12 +197,10 @@ export function SessionView({
       updatedActivities.push(log);
     }
 
-    const updatedSession: Session = {
+    saveSession({
       ...session,
       activities: updatedActivities,
-    };
-
-    onUpdateSession(updatedSession);
+    });
 
     // Move to next activity or complete
     if (currentActivityIndex < activities.length - 1) {
@@ -190,22 +239,27 @@ export function SessionView({
       });
     }
 
-    onUpdateSession({
+    saveSession({
       ...session,
       activities: updatedActivities,
     });
   }
 
   function handleFinish() {
+    notesPending.current = false;
     const completedSession: Session = {
-      ...session,
+      ...withNotes(session),
       status: 'completed',
       endTime: new Date().toISOString(),
       duration: Math.floor((Date.now() - new Date(session.startTime!).getTime()) / 60000),
-      notes: notes || undefined,
       practiceNext: practiceNext || undefined,
     };
     onComplete(completedSession);
+  }
+
+  function handleBack() {
+    flushNotes();
+    onCancel();
   }
 
   function openEditMode() {
@@ -241,7 +295,7 @@ export function SessionView({
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-lg">
+              <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="Back">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
@@ -382,20 +436,6 @@ export function SessionView({
                     </p>
                   </div>
                 )}
-
-                {/* Per-session notes for this routine */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                    Session notes
-                  </label>
-                  <textarea
-                    value={activityNotes[currentActivity.id] ?? currentLog?.notes ?? ''}
-                    onChange={(e) => setActivityNotes(prev => ({ ...prev, [currentActivity.id]: e.target.value }))}
-                    placeholder="How did it feel? Any corrections from the teacher?"
-                    className="w-full p-3 text-sm border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                    rows={2}
-                  />
-                </div>
 
                 {currentLog?.completed ? (
                   <div className="flex items-center justify-center gap-2 py-3 text-green-600">
@@ -548,20 +588,42 @@ export function SessionView({
                 </div>
               </div>
             )}
+
+            {/* Notes for this activity in this session (#34) */}
+            <div className="mt-6">
+              <label
+                htmlFor="activity-notes"
+                className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1"
+              >
+                {isBallet ? 'Routine notes' : 'Exercise notes'}
+              </label>
+              <textarea
+                id="activity-notes"
+                value={activityNotes[currentActivity.id] ?? currentLog?.notes ?? ''}
+                onChange={(e) => editActivityNotes(currentActivity.id, e.target.value)}
+                placeholder={isBallet
+                  ? 'How did it feel? Any corrections from the teacher?'
+                  : 'Form cues, how it felt, machine settings...'}
+                className={`w-full p-3 text-sm border border-gray-200 rounded-lg resize-y min-h-[5rem] focus:ring-2 ${
+                  isBallet ? 'focus:ring-purple-500 focus:border-purple-500' : 'focus:ring-blue-500 focus:border-blue-500'
+                }`}
+                rows={4}
+              />
+            </div>
           </div>
         )}
 
-        {/* Notes */}
+        {/* Session notes */}
         <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
-          <label className="block text-sm font-semibold text-gray-500 uppercase mb-2">
-            Notes (optional)
+          <label htmlFor="session-notes" className="block text-sm font-semibold text-gray-500 uppercase mb-2">
+            Session notes (optional)
           </label>
           <textarea
+            id="session-notes"
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => editSessionNotes(e.target.value)}
             placeholder="How did it go?"
-            className="w-full p-3 border border-gray-300 rounded-lg resize-none"
-            rows={2}
+            className="w-full h-[50vh] min-h-[8rem] p-3 border border-gray-300 rounded-lg resize-y"
           />
         </div>
 

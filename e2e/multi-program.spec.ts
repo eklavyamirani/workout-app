@@ -29,7 +29,7 @@ test.describe('Multi-Program Workflow', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     
     // Set starting weights (all to 100 lbs)
-    const weightInputs = page.locator('input[type="number"]');
+    const weightInputs = page.getByLabel(/starting weight/);
     const count = await weightInputs.count();
     for (let i = 0; i < count; i++) {
       await weightInputs.nth(i).fill('100');

@@ -5,6 +5,7 @@ import { BalletGlossary } from './BalletGlossary';
 import { RoutineBuilder } from './RoutineBuilder';
 import { ExerciseReferencePopover } from './ExerciseReferencePopover';
 import { getBaseExerciseId } from '../utils/exerciseId';
+import { sanitizeWeightInput, parseWeight, formatWeight } from '../utils/weight';
 import { logger } from '../utils/logger';
 
 interface SessionViewProps {
@@ -96,7 +97,8 @@ export function SessionView({
   }, [session]);
 
   // For weightlifting
-  const [currentWeight, setCurrentWeight] = useState(0);
+  const [weightText, setWeightText] = useState('0');
+  const currentWeight = parseWeight(weightText);
   const [currentReps, setCurrentReps] = useState(0);
 
   // In-session editing
@@ -381,7 +383,7 @@ export function SessionView({
         </div>
 
         {currentActivity && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
             {/* Routine header with edit button */}
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">
@@ -528,49 +530,63 @@ export function SessionView({
                     Log Set {(currentLog?.sets?.length || 0) + 1}
                   </h3>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-1">Weight (lbs)</label>
-                      <div className="flex items-center gap-2">
+                  {/* Stacked on phones so weight and reps each get the full width (#21) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="min-w-0">
+                      <label htmlFor="set-weight" className="block text-sm text-gray-600 mb-1">Weight (lbs)</label>
+                      <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setCurrentWeight(Math.max(0, currentWeight - 5))}
-                          className="p-2 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                          onClick={() => setWeightText(formatWeight(Math.max(0, currentWeight - 5)))}
+                          className="p-3 sm:p-2 flex-shrink-0 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                          aria-label="Decrease weight"
                         >
                           <Minus className="w-4 h-4" />
                         </button>
                         <input
-                          type="number"
-                          value={currentWeight}
-                          onChange={(e) => setCurrentWeight(parseInt(e.target.value) || 0)}
-                          className="flex-1 p-2 border border-gray-300 rounded text-center"
+                          id="set-weight"
+                          type="text"
+                          inputMode="decimal"
+                          value={weightText}
+                          onChange={(e) => {
+                            const text = sanitizeWeightInput(e.target.value);
+                            if (text !== null) setWeightText(text);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          className="min-w-0 w-full flex-1 p-2 border border-gray-300 rounded text-center"
                         />
                         <button
-                          onClick={() => setCurrentWeight(currentWeight + 5)}
-                          className="p-2 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                          onClick={() => setWeightText(formatWeight(currentWeight + 5))}
+                          className="p-3 sm:p-2 flex-shrink-0 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                          aria-label="Increase weight"
                         >
                           <Plus className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-1">Reps</label>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <label htmlFor="set-reps" className="block text-sm text-gray-600 mb-1">Reps</label>
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={() => setCurrentReps(Math.max(0, currentReps - 1))}
-                          className="p-2 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                          className="p-3 sm:p-2 flex-shrink-0 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                          aria-label="Decrease reps"
                         >
                           <Minus className="w-4 h-4" />
                         </button>
                         <input
+                          id="set-reps"
                           type="number"
+                          inputMode="numeric"
                           value={currentReps}
                           onChange={(e) => setCurrentReps(parseInt(e.target.value) || 0)}
-                          className="flex-1 p-2 border border-gray-300 rounded text-center"
+                          onFocus={(e) => e.target.select()}
+                          className="min-w-0 w-full flex-1 p-2 border border-gray-300 rounded text-center"
                         />
                         <button
                           onClick={() => setCurrentReps(currentReps + 1)}
-                          className="p-2 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                          className="p-3 sm:p-2 flex-shrink-0 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                          aria-label="Increase reps"
                         >
                           <Plus className="w-4 h-4" />
                         </button>

@@ -259,6 +259,7 @@ export interface Session {
   notes?: string;
   practiceNext?: string;  // what to practice next session
   skipReason?: string;
+  workoutDay?: number;  // GZCLP rotation day (1-4) this session follows
 }
 
 // Scheduled Session (for calendar view)
@@ -268,6 +269,7 @@ export interface ScheduledSession {
   programType: ProgramType;
   date: string;
   activities: Activity[];
+  workoutDayName?: string;  // GZCLP day template, e.g. "Day 2 - Bench Focus"
   session?: Session;  // filled if started/completed
 }
 

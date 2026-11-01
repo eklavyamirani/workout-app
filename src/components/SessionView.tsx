@@ -5,7 +5,7 @@ import { BalletGlossary } from './BalletGlossary';
 import { RoutineBuilder } from './RoutineBuilder';
 import { ExerciseReferencePopover } from './ExerciseReferencePopover';
 import { getBaseExerciseId } from '../utils/exerciseId';
-import { sanitizeWeightInput, parseWeight, formatWeight } from '../utils/weight';
+import { sanitizeWeightInput, parseWeight, formatWeight, formatSetWeight } from '../utils/weight';
 import { logger } from '../utils/logger';
 
 interface SessionViewProps {
@@ -213,7 +213,8 @@ export function SessionView({
   }
 
   function logSet() {
-    if (currentWeight <= 0 || currentReps <= 0) return;
+    // Weight 0 is a bodyweight set; only reps are required
+    if (currentReps <= 0) return;
 
     const updatedActivities = [...session.activities];
     const existingIndex = updatedActivities.findIndex(a => a.activityId === currentActivity.id);
@@ -517,7 +518,7 @@ export function SessionView({
                       >
                         <span className="text-sm text-gray-500">Set {set.setNumber}</span>
                         <span className="font-medium">
-                          {set.weight} lbs × {set.reps} reps
+                          {formatSetWeight(set.weight)} × {set.reps} reps
                         </span>
                       </div>
                     ))}
@@ -552,6 +553,7 @@ export function SessionView({
                             if (text !== null) setWeightText(text);
                           }}
                           onFocus={(e) => e.target.select()}
+                          aria-describedby="set-weight-hint"
                           className="min-w-0 w-full flex-1 p-2 border border-gray-300 rounded text-center"
                         />
                         <button
@@ -562,6 +564,7 @@ export function SessionView({
                           <Plus className="w-4 h-4" />
                         </button>
                       </div>
+                      <p id="set-weight-hint" className="mt-1 text-xs text-gray-500">0 for bodyweight</p>
                     </div>
 
                     <div className="min-w-0">
@@ -596,10 +599,10 @@ export function SessionView({
 
                   <button
                     onClick={logSet}
-                    disabled={currentWeight <= 0 || currentReps <= 0}
+                    disabled={currentReps <= 0}
                     className="w-full py-3 bg-blue-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-600 transition-colors"
                   >
-                    Log Set ({currentWeight} lbs × {currentReps} reps)
+                    Log Set ({formatSetWeight(currentWeight)} × {currentReps} reps)
                   </button>
                 </div>
               </div>

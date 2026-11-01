@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeWeightInput, parseWeight, formatWeight } from '../weight';
+import { sanitizeWeightInput, parseWeight, formatWeight, formatSetWeight } from '../weight';
+
+describe('formatSetWeight', () => {
+  it('labels a zero weight as bodyweight', () => {
+    expect(formatSetWeight(0)).toBe('Bodyweight');
+    expect(formatSetWeight(22.5)).toBe('22.5 lbs');
+  });
+});
 
 describe('sanitizeWeightInput', () => {
   it('accepts whole numbers, decimals and partial decimals', () => {

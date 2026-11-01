@@ -16,6 +16,7 @@ function activityDetail(activity: Activity): string | null {
     parts.push(`${activity.tier} · ${config.sets}×${config.reps}+`);
   }
   if (activity.startingWeight) parts.push(`start ${activity.startingWeight} lbs`);
+  else if (activity.tier && activity.startingWeight === 0) parts.push('bodyweight');
   if (activity.targetDuration) parts.push(`${activity.targetDuration} min`);
   if (activity.section) parts.push(activity.section);
   if (!activity.tier && activity.muscleGroups?.length) parts.push(activity.muscleGroups.join(', '));

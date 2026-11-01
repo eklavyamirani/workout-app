@@ -117,8 +117,8 @@ test.describe('Session Tracking', () => {
     await expect(page.getByRole('button', { name: /Log Set/ })).toBeVisible();
 
     // Log a set
-    await page.locator('input[type="number"]').first().fill('135');
-    await page.locator('input[type="number"]').nth(1).fill('10');
+    await page.getByLabel('Weight (lbs)').fill('135');
+    await page.getByLabel('Reps', { exact: true }).fill('10');
     await page.getByRole('button', { name: /Log Set.*135.*10/ }).click();
 
     // Verify set was logged

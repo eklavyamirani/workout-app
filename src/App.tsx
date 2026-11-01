@@ -13,6 +13,7 @@ import { BalletSetup } from './components/BalletSetup';
 import { RollingCalendar } from './components/RollingCalendar';
 import { SessionView } from './components/SessionView';
 import type { Program, Activity, Session, GZCLPWorkoutDay } from './types';
+import { gzclpDaysKey, workoutDayFor, activitiesForDay } from './utils/gzclp';
 
 type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'ballet-setup' | 'session';
 
@@ -21,6 +22,8 @@ export default function App() {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [activities, setActivities] = useState<Record<string, Activity[]>>({});
   const [sessions, setSessions] = useState<Record<string, Session>>({});
+  // GZCLP day templates per program id
+  const [gzclpDays, setGzclpDays] = useState<Record<string, GZCLPWorkoutDay[]>>({});
   const [currentSession, setCurrentSession] = useState<{
     program: Program;
     activities: Activity[];
@@ -60,10 +63,15 @@ export default function App() {
 
     // Load activities for each program
     const loadedActivities: Record<string, Activity[]> = {};
+    const loadedDays: Record<string, GZCLPWorkoutDay[]> = {};
     for (const program of loadedPrograms) {
       loadedActivities[program.id] = await activityStorage.getByProgram(program.id);
+      if (program.type === 'gzclp') {
+        loadedDays[program.id] = await storage.get<GZCLPWorkoutDay[]>(gzclpDaysKey(program.id)) || [];
+      }
     }
     setActivities(loadedActivities);
+    setGzclpDays(loadedDays);
 
     // Load sessions for the next 7 days
     const today = new Date();
@@ -96,6 +104,7 @@ export default function App() {
 
   async function handleDeleteProgram(programId: string) {
     await programStorage.delete(programId);
+    if (gzclpDays[programId]) await storage.delete(gzclpDaysKey(programId));
     setPrograms(programs.filter(p => p.id !== programId));
     const newActivities = { ...activities };
     delete newActivities[programId];
@@ -113,10 +122,11 @@ export default function App() {
   async function handleGZCLPComplete(program: Program, programActivities: Activity[], workoutDays: GZCLPWorkoutDay[]) {
     await programStorage.save(program);
     await activityStorage.saveAll(program.id, programActivities);
-    await storage.set(`gzclp:${program.id}:days`, workoutDays);
-    
+    await storage.set(gzclpDaysKey(program.id), workoutDays);
+
     setPrograms([...programs, program]);
     setActivities({ ...activities, [program.id]: programActivities });
+    setGzclpDays({ ...gzclpDays, [program.id]: workoutDays });
     setView('home');
   }
 
@@ -124,10 +134,15 @@ export default function App() {
     const program = programs.find(p => p.id === programId);
     if (!program) return;
 
-    const programActivities = activities[programId] || [];
     const sessionKey = `${date}:${programId}`;
-
     let session = sessions[sessionKey];
+
+    // GZCLP sessions follow one day of the rotation (#20)
+    const workoutDay = program.type === 'gzclp'
+      ? workoutDayFor(program, gzclpDays[programId] || [], session)
+      : undefined;
+    const programActivities = activitiesForDay(activities[programId] || [], workoutDay);
+
     if (!session) {
       session = {
         id: `session_${Date.now()}`,
@@ -136,6 +151,7 @@ export default function App() {
         status: 'in-progress',
         startTime: new Date().toISOString(),
         activities: [],
+        ...(workoutDay ? { workoutDay: workoutDay.dayNumber } : {}),
       };
       await sessionStorage.save(session);
       setSessions({ ...sessions, [sessionKey]: session });
@@ -206,6 +222,14 @@ export default function App() {
     await sessionStorage.save(session);
     const sessionKey = `${session.date}:${session.programId}`;
     setSessions({ ...sessions, [sessionKey]: session });
+
+    // Advance the GZCLP rotation past the day just finished
+    const program = programs.find(p => p.id === session.programId);
+    if (program && session.workoutDay !== undefined) {
+      const updated = { ...program, lastWorkoutDay: session.workoutDay };
+      await programStorage.save(updated);
+      setPrograms(programs.map(p => (p.id === updated.id ? updated : p)));
+    }
     setCurrentSession(null);
     setView('home');
   }
@@ -351,6 +375,7 @@ export default function App() {
                 programs={programs}
                 activities={activities}
                 sessions={sessions}
+                gzclpDays={gzclpDays}
                 onStartSession={handleStartSession}
                 onSkipSession={handleSkipSession}
                 onSplitSession={() => {}}

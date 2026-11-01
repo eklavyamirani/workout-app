@@ -27,8 +27,8 @@ async function createWeightliftingProgram(page: Page, name: string, exercises: s
 }
 
 async function logSet(page: Page, weight: string, reps: string) {
-  await page.locator('input[type="number"]').first().fill(weight);
-  await page.locator('input[type="number"]').nth(1).fill(reps);
+  await page.getByLabel('Weight (lbs)').fill(weight);
+  await page.getByLabel('Reps', { exact: true }).fill(reps);
   await page.getByRole('button', { name: /Log Set \(/ }).click();
 }
 

@@ -49,7 +49,7 @@ test.describe('GZCLP Program', () => {
     await expect(page.getByText('Bench Press').first()).toBeVisible();
     
     // Fill in weights for all exercises
-    const weightInputs = page.locator('input[type="number"]');
+    const weightInputs = page.getByLabel(/starting weight/);
     const count = await weightInputs.count();
     for (let i = 0; i < count; i++) {
       await weightInputs.nth(i).fill('100');

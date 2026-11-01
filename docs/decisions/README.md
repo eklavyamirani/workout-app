@@ -16,6 +16,7 @@ sequentially, never renumber.
 | [0007](0007-preview-seed-fixture-and-sanitize.md) | 2026-10-23 | Preview seed: SQL fixture + identity-breaking sanitizer, `--seed` jobs | agent-decided |
 | [0008](0008-local-compose-stack.md) | 2026-10-23 | Compose kept for local dev, platform-shaped (migrate job, `workout_rt`, PG18); Authentik bootstrap fix | agent-decided |
 | [0009](0009-session-notes-and-sync-reload.md) | 2026-11-01 | Notes per exercise and per session, saved while typing; sync reloads keep the current view (#32–#34) | agent-decided |
+| [0010](0010-gzclp-rotation-and-weight-inputs.md) | 2026-11-01 | GZCLP sessions follow the 4-day rotation; calendar day names and preview; decimal weights; stacked set inputs on phones (#17–#21) | agent-decided |
 
 ## Status (2026-10-24)
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, Check, Plus, X } from 'lucide-react';
 import type { Program, Activity, GZCLPTier, GZCLPWorkoutDay, DEFAULT_GZCLP_EXERCISES } from '../types';
 import { DEFAULT_GZCLP_EXERCISES as EXERCISES } from '../types';
+import { sanitizeWeightInput, parseWeight } from '../utils/weight';
 
 interface GZCLPSetupProps {
   onComplete: (program: Program, activities: Activity[], workoutDays: GZCLPWorkoutDay[]) => void;
@@ -25,7 +26,8 @@ export function GZCLPSetup({ onComplete, onCancel }: GZCLPSetupProps) {
     3: { dayNumber: 3, name: 'Day 3 - Deadlift Focus', t1ExerciseId: 'deadlift', t2ExerciseId: 'ohp', t3ExerciseIds: ['leg_curl'] },
     4: { dayNumber: 4, name: 'Day 4 - OHP Focus', t1ExerciseId: 'ohp', t2ExerciseId: 'front_squat', t3ExerciseIds: ['tricep_pushdown'] },
   });
-  const [startingWeights, setStartingWeights] = useState<Record<string, number>>({});
+  // Typed text per exercise id, so decimals like "22.5" can be entered (#17)
+  const [startingWeights, setStartingWeights] = useState<Record<string, string>>({});
   const [customExercises, setCustomExercises] = useState<Omit<Activity, 'programId'>[]>([]);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [newExercise, setNewExercise] = useState({ name: '', tier: 'T1' as GZCLPTier });
@@ -103,7 +105,7 @@ export function GZCLPSetup({ onComplete, onCancel }: GZCLPSetupProps) {
           ...exercise,
           id: `${programId}_${exercise.id}`,
           programId,
-          startingWeight: startingWeights[exId] || 0,
+          startingWeight: parseWeight(startingWeights[exId] ?? ''),
         });
       }
     });
@@ -125,7 +127,7 @@ export function GZCLPSetup({ onComplete, onCancel }: GZCLPSetupProps) {
     const day = workoutDays[d];
     return day?.t1ExerciseId && day?.t2ExerciseId && (day?.t3ExerciseIds?.length || 0) > 0;
   });
-  const allWeightsSet = Array.from(usedExerciseIds).every(id => startingWeights[id] > 0);
+  const allWeightsSet = Array.from(usedExerciseIds).every(id => parseWeight(startingWeights[id] ?? '') > 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -328,12 +330,14 @@ export function GZCLPSetup({ onComplete, onCancel }: GZCLPSetupProps) {
                     </div>
                     <div className="flex items-center gap-2">
                       <input
-                        type="number"
-                        value={startingWeights[exId] || ''}
-                        onChange={(e) => setStartingWeights({
-                          ...startingWeights,
-                          [exId]: parseInt(e.target.value) || 0
-                        })}
+                        type="text"
+                        inputMode="decimal"
+                        aria-label={`${exercise.name} starting weight`}
+                        value={startingWeights[exId] ?? ''}
+                        onChange={(e) => {
+                          const text = sanitizeWeightInput(e.target.value);
+                          if (text !== null) setStartingWeights({ ...startingWeights, [exId]: text });
+                        }}
                         placeholder="0"
                         className="w-20 p-2 border border-gray-300 rounded text-center"
                       />

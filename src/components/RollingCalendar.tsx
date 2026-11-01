@@ -1,11 +1,14 @@
-import React from 'react';
-import { Play, SkipForward, ArrowRight } from 'lucide-react';
-import type { Program, Activity, Session, ScheduledSession } from '../types';
+import React, { useState } from 'react';
+import { Play, SkipForward, Eye } from 'lucide-react';
+import type { Program, Activity, Session, ScheduledSession, GZCLPWorkoutDay } from '../types';
+import { workoutDayFor, activitiesForDay } from '../utils/gzclp';
+import { WorkoutPreview } from './WorkoutPreview';
 
 interface RollingCalendarProps {
   programs: Program[];
   activities: Record<string, Activity[]>;
   sessions: Record<string, Session>;
+  gzclpDays?: Record<string, GZCLPWorkoutDay[]>;
   onStartSession: (programId: string, date: string) => void;
   onSkipSession: (programId: string, date: string, reason?: string) => void;
   onSplitSession: (programId: string, fromDate: string, toDate: string) => void;
@@ -36,7 +39,8 @@ function getScheduledSessionsForDate(
   date: Date,
   programs: Program[],
   activities: Record<string, Activity[]>,
-  sessions: Record<string, Session>
+  sessions: Record<string, Session>,
+  gzclpDays: Record<string, GZCLPWorkoutDay[]>
 ): ScheduledSession[] {
   const dateStr = formatDate(date);
   const dayOfWeek = date.getDay();
@@ -61,13 +65,19 @@ function getScheduledSessionsForDate(
 
     if (isScheduled) {
       const sessionKey = `${dateStr}:${program.id}`;
+      const session = sessions[sessionKey];
+      // GZCLP: the day a session was started on, else the next day in the rotation (#19)
+      const workoutDay = program.type === 'gzclp'
+        ? workoutDayFor(program, gzclpDays[program.id] || [], session)
+        : undefined;
       result.push({
         programId: program.id,
         programName: program.name,
         programType: program.type,
         date: dateStr,
-        activities: activities[program.id] || [],
-        session: sessions[sessionKey],
+        activities: activitiesForDay(activities[program.id] || [], workoutDay),
+        workoutDayName: workoutDay?.name,
+        session,
       });
     }
   }
@@ -79,9 +89,11 @@ export function RollingCalendar({
   programs,
   activities,
   sessions,
+  gzclpDays = {},
   onStartSession,
   onSkipSession,
 }: RollingCalendarProps) {
+  const [preview, setPreview] = useState<{ scheduled: ScheduledSession; dateLabel: string } | null>(null);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -90,7 +102,7 @@ export function RollingCalendar({
   for (let i = 0; i < 7; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() + i);
-    const scheduledSessions = getScheduledSessionsForDate(date, programs, activities, sessions);
+    const scheduledSessions = getScheduledSessionsForDate(date, programs, activities, sessions, gzclpDays);
     if (scheduledSessions.length > 0) {
       days.push({ date, sessions: scheduledSessions });
     }
@@ -131,8 +143,8 @@ export function RollingCalendar({
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-medium text-gray-900">
                           {scheduled.programName}
                         </h4>
@@ -152,6 +164,9 @@ export function RollingCalendar({
                           </span>
                         )}
                       </div>
+                      {scheduled.workoutDayName && (
+                        <p className="text-sm font-medium text-blue-700">{scheduled.workoutDayName}</p>
+                      )}
                       <p className="text-sm text-gray-500">
                         {scheduled.activities.length} {scheduled.activities.length === 1 ? 'activity' : 'activities'}
                         {scheduled.activities[0]?.targetDuration && (
@@ -160,27 +175,37 @@ export function RollingCalendar({
                       </p>
                     </div>
 
-                    {!isCompleted && !isSkipped && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => onStartSession(scheduled.programId, scheduled.date)}
-                          className="flex items-center gap-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                        >
-                          <Play className="w-4 h-4" />
-                          <span>{isInProgress ? 'Continue' : 'Start'}</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            const reason = prompt('Reason for skipping (optional):');
-                            onSkipSession(scheduled.programId, scheduled.date, reason || undefined);
-                          }}
-                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Skip"
-                        >
-                          <SkipForward className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setPreview({ scheduled, dateLabel: getDateLabel(date, today) })}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Preview"
+                        aria-label={`Preview ${scheduled.programName}`}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      {!isCompleted && !isSkipped && (
+                        <>
+                          <button
+                            onClick={() => onStartSession(scheduled.programId, scheduled.date)}
+                            className="flex items-center gap-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                          >
+                            <Play className="w-4 h-4" />
+                            <span>{isInProgress ? 'Continue' : 'Start'}</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              const reason = prompt('Reason for skipping (optional):');
+                              onSkipSession(scheduled.programId, scheduled.date, reason || undefined);
+                            }}
+                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Skip"
+                          >
+                            <SkipForward className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -188,6 +213,14 @@ export function RollingCalendar({
           </div>
         </div>
       ))}
+
+      {preview && (
+        <WorkoutPreview
+          scheduled={preview.scheduled}
+          dateLabel={preview.dateLabel}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }

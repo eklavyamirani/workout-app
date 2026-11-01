@@ -81,7 +81,8 @@ export default function App() {
     }
     setSessions(sessionMap);
 
-    setView('home');
+    // Background sync reloads (sync:updated) must not navigate away from the current view (#32)
+    setView(v => (v === 'loading' ? 'home' : v));
   }
 
   async function handleCreateProgram(program: Program, programActivities: Activity[]) {
@@ -187,11 +188,8 @@ export default function App() {
   async function handleUpdateSession(session: Session) {
     await sessionStorage.save(session);
     const sessionKey = `${session.date}:${session.programId}`;
-    setSessions({ ...sessions, [sessionKey]: session });
-    
-    if (currentSession) {
-      setCurrentSession({ ...currentSession, session });
-    }
+    setSessions(prev => ({ ...prev, [sessionKey]: session }));
+    setCurrentSession(prev => (prev && prev.session.id === session.id ? { ...prev, session } : prev));
   }
 
   async function handleUpdateActivities(programId: string, updatedActivities: Activity[]) {

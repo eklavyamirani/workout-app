@@ -65,6 +65,38 @@ test.describe('Weight training', () => {
     await expect(page.locator('span.font-medium').filter({ hasText: '22.5 lbs × 10 reps' })).toBeVisible();
   });
 
+  test('logs bodyweight sets with weight 0', async ({ page }) => {
+    await createWeightliftingProgram(page);
+    await page.getByRole('button', { name: 'Start' }).first().click();
+
+    await expect(page.getByLabel('Weight (lbs)')).toHaveValue('0');
+    await expect(page.getByText('0 for bodyweight')).toBeVisible();
+    await page.getByLabel('Reps', { exact: true }).fill('15');
+    await page.getByRole('button', { name: 'Log Set (Bodyweight × 15 reps)' }).click();
+    await expect(page.locator('span.font-medium').filter({ hasText: 'Bodyweight × 15 reps' })).toBeVisible();
+
+    // Reps are still required
+    await page.getByLabel('Reps', { exact: true }).fill('0');
+    await expect(page.getByRole('button', { name: /Log Set \(/ })).toBeDisabled();
+  });
+
+  test('GZCLP setup accepts 0 as a bodyweight starting weight', async ({ page }) => {
+    await page.getByRole('button', { name: 'Create Program' }).click();
+    await page.getByText('GZCLP Program').click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    const weights = page.getByLabel(/starting weight/);
+    const count = await weights.count();
+    for (let i = 0; i < count; i++) {
+      await weights.nth(i).fill('100');
+    }
+    await page.getByLabel('Lat Pulldown starting weight').fill('0');
+    await page.getByRole('button', { name: 'Create Program' }).click();
+
+    await page.getByRole('button', { name: 'Preview GZCLP Program' }).first().click();
+    await expect(page.getByRole('dialog').getByText('T3 · 3×15+ · bodyweight')).toBeVisible();
+  });
+
   test('GZCLP starting weights accept decimals (#17)', async ({ page }) => {
     await page.getByRole('button', { name: 'Create Program' }).click();
     await page.getByText('GZCLP Program').click();

@@ -13,3 +13,8 @@ export function parseWeight(text: string): number {
 export function formatWeight(weight: number): string {
   return String(Math.round(weight * 100) / 100);
 }
+
+// A logged set's load: 0 means a bodyweight set, e.g. calf raises
+export function formatSetWeight(weight: number): string {
+  return weight > 0 ? `${formatWeight(weight)} lbs` : 'Bodyweight';
+}

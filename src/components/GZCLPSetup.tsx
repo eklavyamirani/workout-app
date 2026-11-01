@@ -127,7 +127,8 @@ export function GZCLPSetup({ onComplete, onCancel }: GZCLPSetupProps) {
     const day = workoutDays[d];
     return day?.t1ExerciseId && day?.t2ExerciseId && (day?.t3ExerciseIds?.length || 0) > 0;
   });
-  const allWeightsSet = Array.from(usedExerciseIds).every(id => parseWeight(startingWeights[id] ?? '') > 0);
+  // 0 is a valid entry: a bodyweight exercise such as calf raises
+  const allWeightsSet = Array.from(usedExerciseIds).every(id => /\d/.test(startingWeights[id] ?? ''));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -315,6 +316,7 @@ export function GZCLPSetup({ onComplete, onCancel }: GZCLPSetupProps) {
             <h2 className="text-lg font-semibold text-gray-900">Set Starting Weights</h2>
             <p className="text-sm text-gray-500">
               Enter the weight you can lift for the target reps. This will be your starting point.
+              Enter 0 for bodyweight exercises.
             </p>
 
             <div className="space-y-3">

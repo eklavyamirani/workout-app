@@ -18,6 +18,7 @@ sequentially, never renumber.
 | [0009](0009-session-notes-and-sync-reload.md) | 2026-11-01 | Notes per exercise and per session, saved while typing; sync reloads keep the current view (#32–#34) | agent-decided |
 | [0010](0010-gzclp-rotation-and-weight-inputs.md) | 2026-11-01 | GZCLP sessions follow the 4-day rotation; calendar day names and preview; decimal weights; stacked set inputs on phones (#17–#21) | agent-decided |
 | [0011](0011-bodyweight-sets.md) | 2026-11-01 | Weight 0 means a bodyweight set; GZCLP setup accepts 0 | agent-decided |
+| [0012](0012-delete-logged-sets.md) | 2026-11-01 | Delete a logged set at once, renumber, inline undo (#36) | agent-decided |
 
 ## Status (2026-10-24)
 

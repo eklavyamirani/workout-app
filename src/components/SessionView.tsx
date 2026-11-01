@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen, Pencil, Video, X } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen, Pencil, Video, X, Trash2 } from 'lucide-react';
 import type { Program, Activity, Session, ActivityLog, SetLog, RoutineEntry, BalletSection } from '../types';
 import { BalletGlossary } from './BalletGlossary';
 import { RoutineBuilder } from './RoutineBuilder';
@@ -98,6 +98,8 @@ export function SessionView({
 
   // For weightlifting
   const [weightText, setWeightText] = useState('0');
+  // Last deleted set, for the undo bar; cleared on the next set or exercise switch
+  const [deletedSet, setDeletedSet] = useState<{ activityId: string; set: SetLog; index: number } | null>(null);
   const currentWeight = parseWeight(weightText);
   const [currentReps, setCurrentReps] = useState(0);
 
@@ -212,9 +214,38 @@ export function SessionView({
     }
   }
 
+  // Replace the current activity's sets, numbering them 1..n
+  function saveSets(sets: SetLog[]) {
+    const renumbered = sets.map((set, i) => ({ ...set, setNumber: i + 1 }));
+    saveSession({
+      ...session,
+      activities: session.activities.map(a =>
+        a.activityId === currentActivity.id ? { ...a, sets: renumbered } : a
+      ),
+    });
+  }
+
+  // Removes a wrongly logged set; the undo bar can put it back (#36)
+  function deleteSet(setId: string) {
+    const sets = currentLog?.sets || [];
+    const index = sets.findIndex(s => s.id === setId);
+    if (index < 0) return;
+    saveSets(sets.filter(s => s.id !== setId));
+    setDeletedSet({ activityId: currentActivity.id, set: sets[index], index });
+  }
+
+  function undoDeleteSet() {
+    if (!deletedSet || deletedSet.activityId !== currentActivity.id) return;
+    const sets = [...(currentLog?.sets || [])];
+    sets.splice(deletedSet.index, 0, deletedSet.set);
+    saveSets(sets);
+    setDeletedSet(null);
+  }
+
   function logSet() {
     // Weight 0 is a bodyweight set; only reps are required
     if (currentReps <= 0) return;
+    setDeletedSet(null);
 
     const updatedActivities = [...session.activities];
     const existingIndex = updatedActivities.findIndex(a => a.activityId === currentActivity.id);
@@ -367,6 +398,7 @@ export function SessionView({
                   setCurrentActivityIndex(index);
                   setTimerSeconds(0);
                   setIsTimerRunning(false);
+                  setDeletedSet(null);
                 }}
                 className={`px-3 py-2 rounded-lg whitespace-nowrap transition-colors ${
                   index === currentActivityIndex
@@ -514,14 +546,36 @@ export function SessionView({
                     {currentLog.sets.map((set) => (
                       <div
                         key={set.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                        className="flex items-center gap-2 pl-3 pr-1 py-1 bg-gray-50 rounded-lg"
                       >
                         <span className="text-sm text-gray-500">Set {set.setNumber}</span>
-                        <span className="font-medium">
+                        <span className="flex-1 text-right font-medium">
                           {formatSetWeight(set.weight)} × {set.reps} reps
                         </span>
+                        <button
+                          onClick={() => deleteSet(set.id)}
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          aria-label={`Delete set ${set.setNumber}`}
+                          title="Delete set"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {deletedSet?.activityId === currentActivity.id && (
+                  <div role="status" className="flex items-center justify-between gap-2 px-3 py-2 text-sm bg-gray-800 text-white rounded-lg">
+                    <span>
+                      Deleted {formatSetWeight(deletedSet.set.weight)} × {deletedSet.set.reps} reps
+                    </span>
+                    <button
+                      onClick={undoDeleteSet}
+                      className="px-2 py-1 font-semibold text-blue-300 hover:text-blue-200"
+                    >
+                      Undo
+                    </button>
                   </div>
                 )}
 

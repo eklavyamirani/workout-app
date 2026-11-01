@@ -80,6 +80,37 @@ test.describe('Weight training', () => {
     await expect(page.getByRole('button', { name: /Log Set \(/ })).toBeDisabled();
   });
 
+  test('deletes a wrongly logged set, with undo (#36)', async ({ page }) => {
+    await createWeightliftingProgram(page);
+    await page.getByRole('button', { name: 'Start' }).first().click();
+    await logSet(page, '50', '10');
+    await logSet(page, '55', '8');
+    await logSet(page, '60', '6');
+
+    const sets = page.locator('span.font-medium');
+    await page.getByRole('button', { name: 'Delete set 2' }).click();
+    await expect(sets).toHaveText(['50 lbs × 10 reps', '60 lbs × 6 reps']);
+    await expect(page.getByText('Set 3', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Log Set 3')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => {
+      const key = Object.keys(localStorage).find(k => k.startsWith('sessions:'))!;
+      return JSON.parse(localStorage.getItem(key)!).activities[0].sets.map((s: { setNumber: number; weight: number }) => `${s.setNumber}:${s.weight}`);
+    })).toEqual(['1:50', '2:60']);
+
+    // Undo puts it back in place
+    await expect(page.getByRole('status')).toContainText('Deleted 55 lbs × 8 reps');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(sets).toHaveText(['50 lbs × 10 reps', '55 lbs × 8 reps', '60 lbs × 6 reps']);
+    await expect(page.getByRole('status')).toHaveCount(0);
+
+    // Deleting every set makes the exercise incomplete again
+    for (let i = 3; i >= 1; i--) {
+      await page.getByRole('button', { name: `Delete set ${i}` }).click();
+    }
+    await expect(page.getByText('Logged Sets')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Finish' })).toBeDisabled();
+  });
+
   test('GZCLP setup accepts 0 as a bodyweight starting weight', async ({ page }) => {
     await page.getByRole('button', { name: 'Create Program' }).click();
     await page.getByText('GZCLP Program').click();

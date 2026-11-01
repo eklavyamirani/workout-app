@@ -19,6 +19,7 @@ sequentially, never renumber.
 | [0010](0010-gzclp-rotation-and-weight-inputs.md) | 2026-11-01 | GZCLP sessions follow the 4-day rotation; calendar day names and preview; decimal weights; stacked set inputs on phones (#17–#21) | agent-decided |
 | [0011](0011-bodyweight-sets.md) | 2026-11-01 | Weight 0 means a bodyweight set; GZCLP setup accepts 0 | agent-decided |
 | [0012](0012-delete-logged-sets.md) | 2026-11-01 | Delete a logged set at once, renumber, inline undo (#36) | agent-decided |
+| [0013](0013-require-ci-on-main.md) | 2026-11-01 | Ruleset on `main` requires the `Test and build OCI layouts` check (Actions only, admin bypass) so PRs can auto-merge | agent-decided (owner approved) |
 
 ## Status (2026-10-24)
 

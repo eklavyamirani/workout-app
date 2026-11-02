@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen, Pencil, Video, X, Trash2 } from 'lucide-react';
 import type { Program, Activity, Session, ActivityLog, SetLog, RoutineEntry, BalletSection } from '../types';
+import { GZCLP_CONFIGS } from '../types';
 import { BalletGlossary } from './BalletGlossary';
 import { RoutineBuilder } from './RoutineBuilder';
 import { ExerciseReferencePopover } from './ExerciseReferencePopover';
@@ -13,6 +14,8 @@ interface SessionViewProps {
   activities: Activity[];
   session: Session;
   lastPracticeNotes?: string;
+  // Sets from each activity's most recent earlier session, keyed by activity id
+  previousSets?: Record<string, SetLog[]>;
   onUpdateSession: (session: Session) => void;
   onComplete: (session: Session) => void;
   onUpdateActivities?: (activities: Activity[]) => void;
@@ -71,6 +74,7 @@ export function SessionView({
   activities,
   session,
   lastPracticeNotes,
+  previousSets,
   onUpdateSession,
   onComplete,
   onUpdateActivities,
@@ -121,6 +125,18 @@ export function SessionView({
 
   const currentActivity = activities[currentActivityIndex];
   const currentLog = session.activities.find(a => a.activityId === currentActivity?.id);
+
+  // Opening an exercise fills weight and reps from its own last set: this session's,
+  // else its previous session's, else the starting weight and tier reps. Never from
+  // the exercise shown before.
+  useEffect(() => {
+    if (!currentActivity || currentActivity.trackingType !== 'sets-reps-weight') return;
+    const loggedNow = sessionRef.current.activities.find(a => a.activityId === currentActivity.id)?.sets;
+    const source = loggedNow?.length ? loggedNow : previousSets?.[currentActivity.id];
+    const last = source?.[source.length - 1];
+    setWeightText(formatWeight(last?.weight ?? currentActivity.startingWeight ?? 0));
+    setCurrentReps(last?.reps ?? (currentActivity.tier ? GZCLP_CONFIGS[currentActivity.tier].reps : 0));
+  }, [currentActivity?.id]);
 
   // Fold the note drafts into a session, so every save carries them
   function withNotes(base: Session): Session {

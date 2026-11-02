@@ -12,8 +12,13 @@ import { GZCLPSetup } from './components/GZCLPSetup';
 import { BalletSetup } from './components/BalletSetup';
 import { RollingCalendar } from './components/RollingCalendar';
 import { SessionView } from './components/SessionView';
-import type { Program, Activity, Session, GZCLPWorkoutDay } from './types';
+import type { Program, Activity, Session, GZCLPWorkoutDay, SetLog } from './types';
 import { gzclpDaysKey, workoutDayFor, activitiesForDay } from './utils/gzclp';
+import { localDateString, addDays } from './utils/date';
+import { lastSetsByActivity } from './utils/history';
+
+// Past days whose sessions are loaded, for the past workouts list
+const HISTORY_DAYS = 30;
 
 type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'ballet-setup' | 'session';
 
@@ -29,6 +34,7 @@ export default function App() {
     activities: Activity[];
     session: Session;
     lastPracticeNotes?: string;
+    previousSets?: Record<string, SetLog[]>;
   } | null>(null);
 
   useEffect(() => {
@@ -73,14 +79,11 @@ export default function App() {
     setActivities(loadedActivities);
     setGzclpDays(loadedDays);
 
-    // Load sessions for the next 7 days
+    // Load sessions from the past HISTORY_DAYS to the next 7 days, by local date
     const today = new Date();
-    const nextWeek = new Date(today);
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    
     const loadedSessions = await sessionStorage.getByDateRange(
-      today.toISOString().split('T')[0],
-      nextWeek.toISOString().split('T')[0]
+      localDateString(addDays(today, -HISTORY_DAYS)),
+      localDateString(addDays(today, 7))
     );
     
     const sessionMap: Record<string, Session> = {};
@@ -135,7 +138,8 @@ export default function App() {
     if (!program) return;
 
     const sessionKey = `${date}:${programId}`;
-    let session = sessions[sessionKey];
+    // Storage is the source of truth: never replace a session the in-memory map missed
+    let session = sessions[sessionKey] ?? await sessionStorage.get(date, programId) ?? undefined;
 
     // GZCLP sessions follow one day of the rotation (#20)
     const workoutDay = program.type === 'gzclp'
@@ -154,14 +158,16 @@ export default function App() {
         ...(workoutDay ? { workoutDay: workoutDay.dayNumber } : {}),
       };
       await sessionStorage.save(session);
-      setSessions({ ...sessions, [sessionKey]: session });
     }
+    setSessions(prev => ({ ...prev, [sessionKey]: session! }));
+
+    // Earlier sessions, from storage: in-memory state holds only recent ones
+    const earlierSessions = await sessionStorage.getByDateRange('0000-00-00', date);
 
     // For ballet programs, find the last completed session's practiceNext notes.
-    // Query storage directly because in-memory state only holds today-forward sessions.
     let lastPracticeNotes: string | undefined;
     if (program.type === 'ballet') {
-      const allSessions = await sessionStorage.getByDateRange('0000-00-00', date);
+      const allSessions = earlierSessions;
       let latestDate = '';
       for (const s of allSessions) {
         if (
@@ -182,6 +188,7 @@ export default function App() {
       activities: programActivities,
       session,
       lastPracticeNotes,
+      previousSets: lastSetsByActivity(earlierSessions, programId, date),
     });
     setView('session');
   }
@@ -281,6 +288,7 @@ export default function App() {
         activities={currentSession.activities}
         session={currentSession.session}
         lastPracticeNotes={currentSession.lastPracticeNotes}
+        previousSets={currentSession.previousSets}
         onUpdateSession={handleUpdateSession}
         onComplete={handleCompleteSession}
         onUpdateActivities={(updatedActivities) =>

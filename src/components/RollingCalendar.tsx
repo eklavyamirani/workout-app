@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Play, SkipForward, Eye } from 'lucide-react';
+import { Play, SkipForward, Eye, ChevronRight } from 'lucide-react';
 import type { Program, Activity, Session, ScheduledSession, GZCLPWorkoutDay } from '../types';
 import { workoutDayFor, activitiesForDay } from '../utils/gzclp';
+import { localDateString } from '../utils/date';
 import { WorkoutPreview } from './WorkoutPreview';
 
 interface RollingCalendarProps {
@@ -16,8 +17,55 @@ interface RollingCalendarProps {
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+// Local calendar date; session keys use it (toISOString() would give the UTC date)
+const formatDate = localDateString;
+
+// Planned activities plus any the session logged that are not in the plan
+// (e.g. an exercise removed from the program since)
+function withLoggedActivities(planned: Activity[], session: Session | undefined, all: Activity[]): Activity[] {
+  if (!session) return planned;
+  const extra = session.activities
+    .filter(log => !planned.some(a => a.id === log.activityId))
+    .filter(log => (log.sets?.length ?? 0) > 0 || log.completed || log.notes)
+    .map(log => all.find(a => a.id === log.activityId) ?? {
+      id: log.activityId,
+      name: 'Removed exercise',
+      programId: session.programId,
+      trackingType: log.trackingType,
+    });
+  return [...planned, ...extra];
+}
+
+// A past session as shown in the past workouts list: its GZCLP day if it recorded
+// one, else only what it logged
+function scheduledForPastSession(
+  session: Session,
+  program: Program,
+  activities: Activity[],
+  days: GZCLPWorkoutDay[],
+): ScheduledSession {
+  const workoutDay = session.workoutDay !== undefined
+    ? days.find(d => d.dayNumber === session.workoutDay)
+    : undefined;
+  const planned = workoutDay ? activitiesForDay(activities, workoutDay) : [];
+  return {
+    programId: program.id,
+    programName: program.name,
+    programType: program.type,
+    date: session.date,
+    activities: withLoggedActivities(planned, session, activities),
+    workoutDayName: workoutDay?.name,
+    session,
+  };
+}
+
+function sessionSummary(session: Session): string {
+  const exercises = session.activities.filter(a => (a.sets?.length ?? 0) > 0 || a.completed).length;
+  const sets = session.activities.reduce((n, a) => n + (a.sets?.length ?? 0), 0);
+  const parts = [`${exercises} ${exercises === 1 ? 'exercise' : 'exercises'}`];
+  if (sets > 0) parts.push(`${sets} ${sets === 1 ? 'set' : 'sets'}`);
+  if (session.duration) parts.push(`${session.duration} min`);
+  return parts.join(' · ');
 }
 
 function getDateLabel(date: Date, today: Date): string {
@@ -26,8 +74,12 @@ function getDateLabel(date: Date, today: Date): string {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
   if (dateStr === todayStr) return 'Today';
   if (dateStr === formatDate(tomorrow)) return 'Tomorrow';
+  if (dateStr === formatDate(yesterday)) return 'Yesterday';
   
   const dayName = DAYS_OF_WEEK[date.getDay()];
   const month = date.toLocaleDateString('en-US', { month: 'short' });
@@ -75,7 +127,11 @@ function getScheduledSessionsForDate(
         programName: program.name,
         programType: program.type,
         date: dateStr,
-        activities: activitiesForDay(activities[program.id] || [], workoutDay),
+        activities: withLoggedActivities(
+          activitiesForDay(activities[program.id] || [], workoutDay),
+          session,
+          activities[program.id] || [],
+        ),
         workoutDayName: workoutDay?.name,
         session,
       });
@@ -108,17 +164,29 @@ export function RollingCalendar({
     }
   }
 
-  if (days.length === 0) {
-    return (
-      <div className="p-4 text-center text-gray-500">
-        <p>No sessions scheduled for the next 7 days.</p>
-        <p className="text-sm mt-2">Create a program to get started.</p>
-      </div>
-    );
-  }
+  // Started or finished sessions before today, newest first
+  const todayStr = formatDate(today);
+  const past = Object.values(sessions)
+    .filter(s => s.date < todayStr && s.status !== 'skipped')
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .flatMap(session => {
+      const program = programs.find(p => p.id === session.programId);
+      if (!program) return [];
+      const date = new Date(`${session.date}T00:00:00`);
+      return [{
+        scheduled: scheduledForPastSession(session, program, activities[program.id] || [], gzclpDays[program.id] || []),
+        dateLabel: getDateLabel(date, today),
+      }];
+    });
 
   return (
     <div className="p-4 space-y-4">
+      {days.length === 0 && (
+        <div className="text-center text-gray-500">
+          <p>No sessions scheduled for the next 7 days.</p>
+          <p className="text-sm mt-2">Create a program to get started.</p>
+        </div>
+      )}
       {days.map(({ date, sessions: daySessions }) => (
         <div key={formatDate(date)} className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
@@ -179,8 +247,8 @@ export function RollingCalendar({
                       <button
                         onClick={() => setPreview({ scheduled, dateLabel: getDateLabel(date, today) })}
                         className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Preview"
-                        aria-label={`Preview ${scheduled.programName}`}
+                        title={scheduled.session ? 'Details' : 'Preview'}
+                        aria-label={`${scheduled.session ? 'View' : 'Preview'} ${scheduled.programName}`}
                       >
                         <Eye className="w-4 h-4" />
                       </button>
@@ -213,6 +281,40 @@ export function RollingCalendar({
           </div>
         </div>
       ))}
+
+      {past.length > 0 && (
+        <section aria-labelledby="past-workouts-heading" className="space-y-2 pt-2">
+          <h3 id="past-workouts-heading" className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            Past workouts
+          </h3>
+          <ul className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+            {past.map(({ scheduled, dateLabel }) => (
+              <li key={`${scheduled.date}-${scheduled.programId}`}>
+                <button
+                  onClick={() => setPreview({ scheduled, dateLabel })}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50"
+                  aria-label={`View ${scheduled.programName}, ${dateLabel}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-gray-500">{dateLabel}</div>
+                    <div className="font-medium text-gray-900">
+                      {scheduled.programName}
+                      {scheduled.workoutDayName && (
+                        <span className="font-normal text-gray-500"> · {scheduled.workoutDayName}</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {scheduled.session!.status === 'in-progress' ? 'Not finished · ' : ''}
+                      {sessionSummary(scheduled.session!)}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {preview && (
         <WorkoutPreview

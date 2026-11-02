@@ -20,6 +20,9 @@ sequentially, never renumber.
 | [0011](0011-bodyweight-sets.md) | 2026-11-01 | Weight 0 means a bodyweight set; GZCLP setup accepts 0 | agent-decided |
 | [0012](0012-delete-logged-sets.md) | 2026-11-01 | Delete a logged set at once, renumber, inline undo (#36) | agent-decided |
 | [0013](0013-require-ci-on-main.md) | 2026-11-01 | Ruleset on `main` requires the `Test and build OCI layouts` check (Actions only, admin bypass) so PRs can auto-merge | agent-decided (owner approved) |
+| [0014](0014-local-session-dates.md) | 2026-11-02 | Session dates are local dates; Start never replaces a stored session (lost in-progress workout) | agent-decided |
+| [0015](0015-workout-details-and-past-workouts.md) | 2026-11-02 | View finished workouts: logged results in the workout dialog, 30-day past workouts list | agent-decided |
+| [0016](0016-prefill-from-exercise-history.md) | 2026-11-02 | Weight/reps prefill from the exercise's last set (this session, else last session) | agent-decided |
 
 ## Status (2026-10-24)
 

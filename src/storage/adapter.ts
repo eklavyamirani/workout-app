@@ -94,16 +94,19 @@ export const sessionStorage = {
     return storage.set(`sessions:${session.date}:${session.programId}`, session);
   },
 
-  async getByDateRange(startDate: string, endDate: string): Promise<Session[]> {
+  async getAll(): Promise<Session[]> {
     const keys = await storage.list('sessions:');
     const sessions: Session[] = [];
     for (const key of keys) {
       const session = await storage.get<Session>(key);
-      if (session && session.date >= startDate && session.date <= endDate) {
-        sessions.push(session);
-      }
+      if (session) sessions.push(session);
     }
     return sessions;
+  },
+
+  async getByDateRange(startDate: string, endDate: string): Promise<Session[]> {
+    const sessions = await sessionStorage.getAll();
+    return sessions.filter(s => s.date >= startDate && s.date <= endDate);
   }
 };
 

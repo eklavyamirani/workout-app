@@ -5,6 +5,8 @@ import { enterAnonymousMode } from './helpers';
  * - An in-progress workout survives a reload in the evening, when the UTC date is
  *   already tomorrow (sessions are keyed by the local date).
  * - Finished workouts can be opened to see what was logged, also on later days.
+ * - A workout left unfinished on an earlier day (e.g. one that ran past midnight) can be
+ *   continued from the past workouts list.
  * - Switching exercises fills the weight from that exercise's last session, not the
  *   previous exercise.
  */
@@ -84,6 +86,31 @@ test.describe('Session history', () => {
     await page.getByRole('button', { name: 'View Pull Day, Yesterday' }).click();
     await expect(dialog.getByText('95 lbs × 8 reps')).toBeVisible();
     await expect(dialog.getByText('Felt strong')).toBeVisible();
+  });
+
+  test('a workout that runs past midnight can be continued the next day', async ({ page }) => {
+    await page.clock.setSystemTime(new Date('2026-11-01T23:40:00-08:00'));
+    await page.reload();
+    await createProgram(page, 'Leg Day', ['Squat']);
+    await page.getByRole('button', { name: 'Start' }).first().click();
+    await logSet(page, '185', '5');
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    // 00:10: the calendar has moved on to 2 Nov; the 1 Nov workout is listed as not finished
+    await page.clock.setSystemTime(new Date('2026-11-02T00:10:00-08:00'));
+    await page.reload();
+    await expect(page.getByText(/Not finished/)).toBeVisible();
+    await page.getByRole('button', { name: 'Continue Leg Day, Yesterday' }).click();
+    await expect(page.getByText('Set 1', { exact: true })).toBeVisible();
+    await logSet(page, '185', '5');
+    await page.getByRole('button', { name: 'Finish' }).click();
+
+    // Both sets are on the 1 Nov workout, which is now finished
+    await expect(page.getByRole('button', { name: 'Continue Leg Day, Yesterday' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'View Leg Day, Yesterday' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Completed')).toBeVisible();
+    await expect(dialog.getByText('185 lbs × 5 reps')).toHaveCount(2);
   });
 
   test('switching exercises fills the weight from that exercise, not the previous one', async ({ page }) => {

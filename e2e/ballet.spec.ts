@@ -749,10 +749,14 @@ test.describe('Carry Forward (practiceNext)', () => {
     // Move the completed session to "yesterday" in localStorage so carry-forward triggers
     // (carry-forward only fires for sessions with s.date < today)
     await page.evaluate(() => {
+      // Local dates, as session keys use (toISOString() gives the UTC date, which differs
+      // in the evening west of UTC)
+      const localDate = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-      const todayStr = new Date().toISOString().split('T')[0];
+      const yesterdayStr = localDate(yesterday);
+      const todayStr = localDate(new Date());
 
       // Find the session key for today
       for (let i = 0; i < localStorage.length; i++) {

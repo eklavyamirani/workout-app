@@ -14,11 +14,7 @@ import { RollingCalendar } from './components/RollingCalendar';
 import { SessionView } from './components/SessionView';
 import type { Program, Activity, Session, GZCLPWorkoutDay, SetLog } from './types';
 import { gzclpDaysKey, workoutDayFor, activitiesForDay } from './utils/gzclp';
-import { localDateString, addDays } from './utils/date';
 import { lastSetsByActivity } from './utils/history';
-
-// Past days whose sessions are loaded, for the past workouts list
-const HISTORY_DAYS = 30;
 
 type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'ballet-setup' | 'session';
 
@@ -79,12 +75,9 @@ export default function App() {
     setActivities(loadedActivities);
     setGzclpDays(loadedDays);
 
-    // Load sessions from the past HISTORY_DAYS to the next 7 days, by local date
-    const today = new Date();
-    const loadedSessions = await sessionStorage.getByDateRange(
-      localDateString(addDays(today, -HISTORY_DAYS)),
-      localDateString(addDays(today, 7))
-    );
+    // All sessions: the calendar decides which days to show, so a date range here can't
+    // disagree with it and hide a session (as the UTC range did, #40)
+    const loadedSessions = await sessionStorage.getAll();
     
     const sessionMap: Record<string, Session> = {};
     for (const session of loadedSessions) {

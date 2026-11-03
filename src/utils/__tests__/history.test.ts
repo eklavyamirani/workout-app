@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lastSetsByActivity } from '../history';
+import { lastSetsByActivity, pastSessions } from '../history';
 import type { Session, SetLog } from '../../types';
 
 const set = (weight: number, reps: number): SetLog => ({
@@ -34,5 +34,26 @@ describe('lastSetsByActivity', () => {
     const result = lastSetsByActivity(sessions, 'p', '2026-10-28');
     expect(result.squat[0].weight).toBe(105);
     expect(lastSetsByActivity(sessions, 'p', '2026-10-20')).toEqual({});
+  });
+});
+
+describe('pastSessions', () => {
+  const sessions = [
+    session('2026-11-02', 'p', {}, 'in-progress'),
+    session('2026-11-01', 'p', {}, 'in-progress'),
+    session('2026-10-20', 'p', {}),
+    session('2026-10-25', 'p', {}, 'skipped'),
+    session('2026-09-01', 'p', {}),
+    session('2026-08-01', 'q', {}, 'in-progress'),
+  ];
+
+  it('lists earlier sessions since the cutoff, newest first, without skipped ones', () => {
+    const ids = pastSessions(sessions, '2026-11-02', '2026-10-03').map(s => s.date);
+    expect(ids).toEqual(['2026-11-01', '2026-10-20', '2026-08-01']);
+  });
+
+  it('keeps unfinished sessions older than the cutoff so they can be continued', () => {
+    const old = pastSessions(sessions, '2026-11-02', '2026-10-03').filter(s => s.date < '2026-10-03');
+    expect(old.map(s => s.status)).toEqual(['in-progress']);
   });
 });

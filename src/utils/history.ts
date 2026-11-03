@@ -20,3 +20,12 @@ export function lastSetsByActivity(
   }
   return result;
 }
+
+// Sessions shown under "Past workouts": started or finished before today and on or
+// after cutoff, plus unfinished ones of any age so they can be continued. Newest first.
+export function pastSessions(sessions: Session[], today: string, cutoff: string): Session[] {
+  return sessions
+    .filter(s => s.date < today && s.status !== 'skipped')
+    .filter(s => s.status === 'in-progress' || s.date >= cutoff)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}

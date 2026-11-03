@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Play, SkipForward, Eye, ChevronRight } from 'lucide-react';
 import type { Program, Activity, Session, ScheduledSession, GZCLPWorkoutDay } from '../types';
 import { workoutDayFor, activitiesForDay } from '../utils/gzclp';
-import { localDateString } from '../utils/date';
+import { localDateString, addDays } from '../utils/date';
+import { pastSessions } from '../utils/history';
 import { WorkoutPreview } from './WorkoutPreview';
 
 interface RollingCalendarProps {
@@ -14,6 +15,9 @@ interface RollingCalendarProps {
   onSkipSession: (programId: string, date: string, reason?: string) => void;
   onSplitSession: (programId: string, fromDate: string, toDate: string) => void;
 }
+
+// Days back that finished workouts stay listed under "Past workouts"
+const HISTORY_DAYS = 30;
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -164,11 +168,8 @@ export function RollingCalendar({
     }
   }
 
-  // Started or finished sessions before today, newest first
   const todayStr = formatDate(today);
-  const past = Object.values(sessions)
-    .filter(s => s.date < todayStr && s.status !== 'skipped')
-    .sort((a, b) => b.date.localeCompare(a.date))
+  const past = pastSessions(Object.values(sessions), todayStr, formatDate(addDays(today, -HISTORY_DAYS)))
     .flatMap(session => {
       const program = programs.find(p => p.id === session.programId);
       if (!program) return [];
@@ -289,10 +290,10 @@ export function RollingCalendar({
           </h3>
           <ul className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
             {past.map(({ scheduled, dateLabel }) => (
-              <li key={`${scheduled.date}-${scheduled.programId}`}>
+              <li key={`${scheduled.date}-${scheduled.programId}`} className="flex items-center">
                 <button
                   onClick={() => setPreview({ scheduled, dateLabel })}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50"
+                  className="min-w-0 flex-1 flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50"
                   aria-label={`View ${scheduled.programName}, ${dateLabel}`}
                 >
                   <div className="min-w-0 flex-1">
@@ -310,6 +311,17 @@ export function RollingCalendar({
                   </div>
                   <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                 </button>
+                {/* An unfinished workout, e.g. one that ran past midnight, can still be continued */}
+                {scheduled.session!.status === 'in-progress' && (
+                  <button
+                    onClick={() => onStartSession(scheduled.programId, scheduled.date)}
+                    className="flex items-center gap-1 px-3 py-2 mr-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex-shrink-0"
+                    aria-label={`Continue ${scheduled.programName}, ${dateLabel}`}
+                  >
+                    <Play className="w-4 h-4" />
+                    <span>Continue</span>
+                  </button>
+                )}
               </li>
             ))}
           </ul>

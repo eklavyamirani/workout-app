@@ -168,6 +168,12 @@ with a separate runtime role, and sign-in through the platform's Pocket ID. Deci
 
 `deploy/README.md` describes the local full-stack environment (Traefik, Authentik, Postgres).
 
+**PostgREST preview.** A PR labelled `preview` *and* `preview:postgrest` gets a preview where
+the platform's PostgREST replaces the .NET API on the same tables (decision 0018, app-platform
+record 0042). `db/migrations/` holds the schema and the sync API as SQL functions
+(`/api/rpc/sync_push`, `/api/rpc/sync_pull`, same JSON as `/api/sync/*`); CI builds the
+`workout-db` image that applies them. Production keeps the .NET API.
+
 ## Project Structure
 
 ```
@@ -187,6 +193,7 @@ server/             — ASP.NET Core 8 Minimal API
   Middleware/        — JWT → user resolution + RLS
   Data/             — PostgreSQL schema, migrator (--migrate), seed scripts (--seed)
   server.Tests/     — xUnit integration tests (Testcontainers)
+db/                 — PostgREST layout (previews): migrations/ (schema + sync API in SQL), workout-db image
 deploy/             — Docker, docker-compose, nginx
 scripts/            — Authentik setup, docker-compose test, platform contract smoke test
 platform.toml       — App platform manifest

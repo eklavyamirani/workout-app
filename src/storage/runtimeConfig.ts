@@ -16,7 +16,14 @@ export interface RuntimeConfig {
   oidcAuthority?: string;
   oidcClientId?: string;
   oidcRedirectUri?: string;
+  /**
+   * Which sync API serves `/api`: "dotnet" (default, server/) or "postgrest"
+   * (db/: the platform's PostgREST, app-platform record 0042).
+   */
+  syncApi?: SyncApi;
 }
+
+export type SyncApi = 'dotnet' | 'postgrest';
 
 const RUNTIME_CONFIG_URL = '/runtime-config.json';
 
@@ -30,6 +37,7 @@ function envFallback(): RuntimeConfig {
     oidcAuthority: env.VITE_OIDC_AUTHORITY,
     oidcClientId: env.VITE_OIDC_CLIENT_ID,
     oidcRedirectUri: env.VITE_OIDC_REDIRECT_URI,
+    syncApi: env.VITE_SYNC_API,
   });
 }
 
@@ -59,13 +67,17 @@ function sanitize(raw: unknown): RuntimeConfig {
     'oidcAuthority',
     'oidcClientId',
     'oidcRedirectUri',
+    'syncApi',
   ] as const) {
     if (isNonEmptyString(source[key])) {
-      config[key] = (source[key] as string).trim();
+      (config as Record<string, string>)[key] = (source[key] as string).trim();
     }
   }
   if (config.oidcAuthority) {
     config.oidcAuthority = normalizeOidcAuthority(config.oidcAuthority);
+  }
+  if (config.syncApi && config.syncApi !== 'dotnet' && config.syncApi !== 'postgrest') {
+    delete config.syncApi;
   }
   return config;
 }
@@ -109,4 +121,9 @@ export function getApiBaseUrl(): string {
   const configured = getRuntimeConfig().apiBaseUrl;
   if (!isNonEmptyString(configured)) return '/api';
   return `${configured.replace(/\/+$/, '')}/api`;
+}
+
+/** The sync API behind `/api` (see `RuntimeConfig.syncApi`). */
+export function getSyncApi(): SyncApi {
+  return getRuntimeConfig().syncApi ?? 'dotnet';
 }

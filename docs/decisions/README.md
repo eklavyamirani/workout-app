@@ -24,6 +24,7 @@ sequentially, never renumber.
 | [0015](0015-workout-details-and-past-workouts.md) | 2026-11-02 | View finished workouts: logged results in the workout dialog, 30-day past workouts list | agent-decided |
 | [0016](0016-prefill-from-exercise-history.md) | 2026-11-02 | Weight/reps prefill from the exercise's last set (this session, else last session) | agent-decided |
 | [0017](0017-load-all-sessions-continue-past.md) | 2026-11-02 | Load all sessions (views filter); Continue unfinished workouts from earlier days | owner-approved |
+| [0018](0018-postgrest-preview-layout.md) | 2026-11-04 | PostgREST layout of the sync API (`db/`), for previews labelled `preview:postgrest`; `syncApi` runtime config | owner-approved |
 
 ## Status (2026-10-24)
 

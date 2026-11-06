@@ -170,7 +170,7 @@ with a separate runtime role, and sign-in through the platform's Pocket ID. Deci
 
 **PostgREST preview.** A PR labelled `preview` *and* `preview:postgrest` gets a preview where
 the platform's PostgREST replaces the .NET API on the same tables (decision 0018, app-platform
-record 0042). `db/migrations/` holds the schema and the sync API as SQL functions
+record 0046). `db/migrations/` holds the schema and the sync API as SQL functions
 (`/api/rpc/sync_push`, `/api/rpc/sync_pull`, same JSON as `/api/sync/*`); CI builds the
 `workout-db` image that applies them. Production keeps the .NET API.
 

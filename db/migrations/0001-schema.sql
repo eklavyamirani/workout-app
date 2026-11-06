@@ -1,5 +1,5 @@
 -- The .NET API's schema (server/Data/Schema.sql), for the PostgREST layout
--- (app-platform record 0042). Applied by db/migrate.sh as the database owner
+-- (app-platform record 0046). Applied by db/migrate.sh as the database owner
 -- in one transaction; idempotent, so it also runs over a database the .NET
 -- migrator built (the preview seed). Keep in step with Schema.sql while both
 -- APIs exist. The runtime role arrives as app.runtime_role.

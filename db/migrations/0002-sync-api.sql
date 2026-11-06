@@ -1,4 +1,4 @@
--- Sync API for PostgREST (app-platform record 0042): the same requests and
+-- Sync API for PostgREST (app-platform record 0046): the same requests and
 -- responses as the .NET API's /api/sync/push and /api/sync/pull
 -- (server/Endpoints/SyncEndpoints.cs), as functions in schema "api", the only
 -- schema PostgREST exposes:

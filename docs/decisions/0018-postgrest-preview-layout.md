@@ -3,11 +3,11 @@
 - Date: 2026-11-04 · Status: owner-approved (the owner asked for "a preview version with PostgREST"; details by the agent)
 - Decided by: Claude Code session, at the owner's request · Affects: `db/` (new), `src/storage/remote.ts`, `src/storage/runtimeConfig.ts`, `.github/workflows/platform-v2-images.yml`
 - Reversibility: easy. Nothing in production changes; drop `db/` and the `syncApi` key to undo.
-- Platform side: app-platform record 0042 (PostgREST as a component kind, preview variants).
+- Platform side: app-platform record 0046 (PostgREST as a component kind, preview variants).
 
 ## Context
 The platform now offers PostgREST on an app's own database (app-platform
-record 0042), so simple apps need no API server. The owner asked for a
+record 0046), so simple apps need no API server. The owner asked for a
 preview of this app on it. The .NET API is small: `/api/sync/push` and
 `/api/sync/pull` over `user_data` (row-level security), plus `/api/health`.
 
@@ -44,7 +44,7 @@ RS256 tokens. 13-step sync scenario: identical normalized responses from
 both APIs; expired, wrong-audience, foreign-key and garbage tokens: 401 from
 both. Chromium with the web image: a program created on one device appears
 on a fresh one; another person sees nothing. The platform deployment E2E
-(Pocket ID passkey, a labelled PR on Azure) follows when record 0042 merges.
+(Pocket ID passkey, a labelled PR on Azure) follows when record 0046 merges.
 
 ## Revisit if
 The comparison holds on a real preview: then decide whether production moves

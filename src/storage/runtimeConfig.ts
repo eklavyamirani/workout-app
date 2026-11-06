@@ -18,7 +18,7 @@ export interface RuntimeConfig {
   oidcRedirectUri?: string;
   /**
    * Which sync API serves `/api`: "dotnet" (default, server/) or "postgrest"
-   * (db/: the platform's PostgREST, app-platform record 0042).
+   * (db/: the platform's PostgREST, app-platform record 0046).
    */
   syncApi?: SyncApi;
 }

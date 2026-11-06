@@ -1,6 +1,6 @@
 import { getToken } from './auth';
 import { refreshAccessToken, isTokenExpired } from './oidc';
-import { getApiBaseUrl } from './runtimeConfig';
+import { getApiBaseUrl, getSyncApi } from './runtimeConfig';
 
 export interface SyncChange {
   key: string;
@@ -27,6 +27,14 @@ export interface PullResponse {
   serverTime: string;
 }
 
+/**
+ * Paths of the two sync APIs. Both take and return the same JSON; PostgREST
+ * serves the functions api.sync_push / api.sync_pull of db/migrations.
+ */
+const SYNC_PATHS = {
+  dotnet: { push: '/sync/push', pull: '/sync/pull' },
+  postgrest: { push: '/rpc/sync_push', pull: '/rpc/sync_pull' },
+} as const;
 
 async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   // Refresh token if expired before making the request
@@ -67,7 +75,7 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
 }
 
 export async function pushChanges(changes: SyncChange[]): Promise<PushResponse> {
-  const response = await apiFetch('/sync/push', {
+  const response = await apiFetch(SYNC_PATHS[getSyncApi()].push, {
     method: 'POST',
     body: JSON.stringify({ changes }),
   });
@@ -81,7 +89,7 @@ export async function pushChanges(changes: SyncChange[]): Promise<PushResponse> 
 
 export async function pullChanges(since?: string): Promise<PullResponse> {
   const params = since ? `?since=${encodeURIComponent(since)}` : '?since=2000-01-01T00:00:00Z';
-  const response = await apiFetch(`/sync/pull${params}`);
+  const response = await apiFetch(`${SYNC_PATHS[getSyncApi()].pull}${params}`);
 
   if (!response.ok) {
     throw new Error(`Pull failed: ${response.status}`);

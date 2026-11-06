@@ -1,0 +1,81 @@
+-- The .NET API's schema (server/Data/Schema.sql), for the PostgREST layout
+-- (app-platform record 0046). Applied by db/migrate.sh as the database owner
+-- in one transaction; idempotent, so it also runs over a database the .NET
+-- migrator built (the preview seed). Keep in step with Schema.sql while both
+-- APIs exist. The runtime role arrives as app.runtime_role.
+-- === Tables ===
+
+CREATE TABLE IF NOT EXISTS users (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  issuer      TEXT,
+  subject     TEXT,
+  email       TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Users are identified by the token's (iss, sub): Pocket ID access tokens carry no email
+-- claim, and email is mutable. Email is informational, and links pre-existing email-keyed
+-- rows once (expand step; see docs/decisions/0004). Rows created before this change have a
+-- NULL issuer/subject until their owner next signs in.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS issuer TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subject TEXT;
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
+CREATE UNIQUE INDEX IF NOT EXISTS users_identity ON users (issuer, subject);
+CREATE INDEX IF NOT EXISTS users_unlinked_email ON users (email) WHERE subject IS NULL;
+
+CREATE TABLE IF NOT EXISTS user_data (
+  user_id     UUID NOT NULL REFERENCES users(id),
+  key         TEXT NOT NULL,
+  value       JSONB NOT NULL,
+  version     INTEGER NOT NULL DEFAULT 1,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  client_updated_at TIMESTAMPTZ,
+  deleted     BOOLEAN NOT NULL DEFAULT false,
+  PRIMARY KEY (user_id, key)
+);
+
+-- 'client_updated_at' records the (untrusted) client clock value; 'updated_at' is
+-- always assigned server-side so incremental pull watermarks cannot skip changes.
+ALTER TABLE user_data ADD COLUMN IF NOT EXISTS client_updated_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_user_data_updated ON user_data (user_id, updated_at);
+
+-- === Row-Level Security ===
+ALTER TABLE user_data ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_data FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'user_data' AND policyname = 'user_data_isolation'
+  ) THEN
+    -- current_setting(..., true) returns NULL when unset, so a request that failed to
+    -- establish the user context sees no rows instead of raising an error.
+    CREATE POLICY user_data_isolation ON user_data
+      USING (user_id = nullif(current_setting('app.current_user_id', true), '')::uuid)
+      WITH CHECK (user_id = nullif(current_setting('app.current_user_id', true), '')::uuid);
+  END IF;
+END
+$$;
+
+-- === Runtime role grants ===
+-- With `runtime_role = true` the platform creates a separate NOSUPERUSER NOBYPASSRLS role and
+-- passes its name as DATABASE_RUNTIME_ROLE; db/migrate.sh exposes it as 'app.runtime_role'.
+-- Without one, the API runs as the owner, which FORCE ROW LEVEL SECURITY still constrains.
+DO $$
+DECLARE
+  rt text := nullif(current_setting('app.runtime_role', true), '');
+BEGIN
+  IF rt IS NULL THEN
+    RETURN;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = rt) THEN
+    RAISE EXCEPTION 'runtime role "%" does not exist (it is created by the platform)', rt;
+  END IF;
+  EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', rt);
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON user_data TO %I', rt);
+  -- UPDATE is required by the ON CONFLICT ... DO UPDATE upsert in UserResolverMiddleware.
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE ON users TO %I', rt);
+END
+$$;

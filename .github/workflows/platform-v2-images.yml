@@ -6,7 +6,8 @@
 # its own (non-fork) pull requests.
 #
 # Pull requests labelled "preview" also get a preview environment
-# (https://workout-pr-<n>.<domain>). The "preview" job waits until the
+# (https://workout-pr-<n>.<domain>); adding "preview:postgrest" swaps the
+# .NET API for the platform's PostgREST on the same tables (record 0046). The "preview" job waits until the
 # platform reports it running this commit, then marks the PR's GitHub
 # deployment "workout-pr-<n>" active with the URL (app-platform record 0033).
 # Closing the PR marks the deployment inactive once the platform removed it.
@@ -60,7 +61,9 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # Web first, API last: the platform runs migrations from the API image
       # before it rolls any Deployment, so a rollout starts only after both
-      # images exist.
+      # images exist. With the label "preview:postgrest" the preview runs the
+      # platform's PostgREST instead of the API and migrates from the
+      # workout-db image (db/, app-platform record 0046), so that one is last.
       - name: Web image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -77,6 +80,15 @@ jobs:
           push: true
           provenance: mode=max
           tags: ${{ vars.PLAT2_ACR_NAME }}.azurecr.io/workout-api:${{ env.SHA }}
+      - name: Database image (PostgREST preview)
+        if: contains(github.event.pull_request.labels.*.name, 'preview:postgrest')
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: db
+          file: db/Dockerfile
+          push: true
+          provenance: mode=max
+          tags: ${{ vars.PLAT2_ACR_NAME }}.azurecr.io/workout-db:${{ env.SHA }}
 
   preview:
     needs: images

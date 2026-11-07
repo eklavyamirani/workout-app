@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen, Pencil, Video, X, Trash2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen, Pencil, Video, X, Trash2, SkipForward, Undo2 } from 'lucide-react';
 import type { Program, Activity, Session, ActivityLog, SetLog, RoutineEntry, BalletSection } from '../types';
 import { GZCLP_CONFIGS } from '../types';
 import { BalletGlossary } from './BalletGlossary';
@@ -26,6 +26,13 @@ function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Logged enough to count toward Finish: sets, marked done, or skipped (#43)
+function isActivityDone(activity: Activity, log: ActivityLog | undefined): boolean {
+  if (log?.skipped) return true;
+  if (activity.trackingType === 'sets-reps-weight') return (log?.sets?.length || 0) > 0;
+  return !!log?.completed;
 }
 
 // Convert Activity[] to RoutineEntry[] for the builder
@@ -230,6 +237,43 @@ export function SessionView({
     }
   }
 
+  function goToActivity(index: number) {
+    setCurrentActivityIndex(index);
+    setTimerSeconds(0);
+    setIsTimerRunning(false);
+    setDeletedSet(null);
+  }
+
+  // Skips the current exercise so the workout can be finished without it (#43).
+  // Notes stay; nothing else is logged. Moves to the next exercise not done yet.
+  function skipActivity() {
+    const activityNote = activityNotes[currentActivity.id] ?? currentLog?.notes;
+    const log: ActivityLog = {
+      activityId: currentActivity.id,
+      trackingType: currentActivity.trackingType,
+      skipped: true,
+      ...(activityNote ? { notes: activityNote } : {}),
+    };
+    const exists = session.activities.some(a => a.activityId === currentActivity.id);
+    const updatedLogs = exists
+      ? session.activities.map(a => (a.activityId === currentActivity.id ? log : a))
+      : [...session.activities, log];
+    saveSession({ ...session, activities: updatedLogs });
+
+    const next = activities.findIndex((a, i) =>
+      i > currentActivityIndex && !isActivityDone(a, updatedLogs.find(l => l.activityId === a.id)));
+    if (next >= 0) goToActivity(next);
+  }
+
+  function unskipActivity() {
+    saveSession({
+      ...session,
+      activities: session.activities.map(a =>
+        a.activityId === currentActivity.id ? { ...a, skipped: undefined } : a
+      ),
+    });
+  }
+
   // Replace the current activity's sets, numbering them 1..n
   function saveSets(sets: SetLog[]) {
     const renumbered = sets.map((set, i) => ({ ...set, setNumber: i + 1 }));
@@ -280,6 +324,7 @@ export function SessionView({
       updatedActivities[existingIndex] = {
         ...existing,
         sets: [...(existing.sets || []), newSet],
+        skipped: undefined,
       };
     } else {
       updatedActivities.push({
@@ -331,13 +376,10 @@ export function SessionView({
     setIsEditing(false);
   }
 
-  const allActivitiesComplete = activities.every(activity => {
-    const log = session.activities.find(a => a.activityId === activity.id);
-    if (activity.trackingType === 'sets-reps-weight') {
-      return (log?.sets?.length || 0) > 0;
-    }
-    return log?.completed;
-  });
+  const allActivitiesComplete = activities.every(activity =>
+    isActivityDone(activity, session.activities.find(a => a.activityId === activity.id)));
+  const currentSkipped = !!currentLog?.skipped;
+  const currentDone = currentActivity ? isActivityDone(currentActivity, currentLog) : false;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -403,29 +445,26 @@ export function SessionView({
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
           {activities.map((activity, index) => {
             const log = session.activities.find(a => a.activityId === activity.id);
-            const isComplete = activity.trackingType === 'sets-reps-weight'
-              ? (log?.sets?.length || 0) > 0
-              : log?.completed;
+            const isSkipped = !!log?.skipped;
+            const isComplete = !isSkipped && isActivityDone(activity, log);
 
             return (
               <button
                 key={activity.id}
-                onClick={() => {
-                  setCurrentActivityIndex(index);
-                  setTimerSeconds(0);
-                  setIsTimerRunning(false);
-                  setDeletedSet(null);
-                }}
+                onClick={() => goToActivity(index)}
                 className={`px-3 py-2 rounded-lg whitespace-nowrap transition-colors ${
                   index === currentActivityIndex
                     ? isBallet ? 'bg-purple-500 text-white' : 'bg-blue-500 text-white'
                     : isComplete
                       ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-700'
+                      : isSkipped
+                        ? 'bg-gray-100 text-gray-400 line-through'
+                        : 'bg-gray-100 text-gray-700'
                 }`}
               >
                 {activity.name}
                 {isComplete && ' ✓'}
+                {isSkipped && <span className="sr-only"> (skipped)</span>}
               </button>
             );
           })}
@@ -438,6 +477,17 @@ export function SessionView({
               <h2 className="text-xl font-semibold text-gray-900">
                 {currentActivity.name}
               </h2>
+              <div className="flex items-center gap-1">
+              {!currentDone && (
+                <button
+                  onClick={skipActivity}
+                  className="flex items-center gap-1 px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  title={isBallet ? 'Skip routine' : 'Skip exercise'}
+                >
+                  <SkipForward className="w-4 h-4" />
+                  <span>Skip</span>
+                </button>
+              )}
               {isBallet && onUpdateActivities && (
                 <button
                   onClick={openEditMode}
@@ -447,7 +497,21 @@ export function SessionView({
                   <Pencil className="w-4 h-4" />
                 </button>
               )}
+              </div>
             </div>
+
+            {currentSkipped && (
+              <div role="status" className="mb-4 flex items-center justify-between gap-2 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg">
+                <span>Skipped in this workout</span>
+                <button
+                  onClick={unskipActivity}
+                  className="flex items-center gap-1 px-2 py-1 font-semibold text-blue-600 hover:text-blue-800"
+                >
+                  <Undo2 className="w-4 h-4" />
+                  Undo skip
+                </button>
+              </div>
+            )}
 
             {/* Ballet routine tracking */}
             {currentActivity.trackingType === 'completion' && isBallet && (

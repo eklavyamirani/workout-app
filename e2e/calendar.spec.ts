@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, scheduleEveryDay, startNow } from './helpers';
 
 test.describe('Rolling Calendar', () => {
   test.beforeEach(async ({ page }) => {
@@ -41,10 +41,9 @@ test.describe('Rolling Calendar', () => {
     await expect(page.getByText('Tomorrow')).toBeVisible();
   });
 
-  test('shows flexible programs every day', async ({ page }) => {
+  test('flexible programs have no recurring cards; New workout starts one today (#43)', async ({ page }) => {
     await page.goto('/');
-    
-    // Create a flexible program
+
     await page.getByRole('button', { name: 'Create Program' }).click();
     await page.getByText('Skill Practice').click();
     await page.getByRole('button', { name: 'Continue' }).click();
@@ -56,13 +55,19 @@ test.describe('Rolling Calendar', () => {
     await page.getByRole('button', { name: 'Add Activity' }).click();
     await page.getByRole('button', { name: 'Create Program' }).click();
 
-    // Should see program listed for Today, Tomorrow, and other days
+    // No card on any day until a session is started
+    await expect(page.getByText('No sessions scheduled for the next 7 days.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Anytime Workout' })).toHaveCount(0);
+
+    await startNow(page, 'Anytime Workout');
+    await expect(page.getByRole('heading', { name: 'Anytime Workout' })).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    // Only today has the started session
     await expect(page.getByText('Today')).toBeVisible();
-    await expect(page.getByText('Tomorrow')).toBeVisible();
-    
-    // The program should appear multiple times (once per day)
-    const programCards = page.getByText('Anytime Workout');
-    await expect(programCards.first()).toBeVisible();
+    await expect(page.getByText('In Progress')).toBeVisible();
+    await expect(page.getByText('Tomorrow')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Anytime Workout' })).toHaveCount(1);
   });
 
   test('persists session completion state', async ({ page }) => {
@@ -74,7 +79,7 @@ test.describe('Rolling Calendar', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('Quick Session');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Task');
     await page.getByRole('button', { name: 'Add Activity' }).click();

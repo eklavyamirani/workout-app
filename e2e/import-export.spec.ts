@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, scheduleEveryDay } from './helpers';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -18,7 +18,7 @@ test.describe('Import/Export', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('My Violin Program');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Scales');
     await page.getByRole('button', { name: 'Add Activity' }).click();
@@ -103,7 +103,7 @@ test.describe('Import/Export', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('Duplicate Test');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Activity');
     await page.getByRole('button', { name: 'Add Activity' }).click();
@@ -153,7 +153,7 @@ test.describe('Import/Export', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('Export Test Program');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Test Activity');
     await page.getByRole('button', { name: 'Add Activity' }).click();
@@ -239,9 +239,10 @@ test.describe('Import/Export', () => {
     // Verify program appears
     await expect(page.getByText('Navigation Test').first()).toBeVisible();
     
-    // Navigate back to Calendar and verify program shows there too
+    // Navigate back to Calendar: a flexible program is started from New workout (#43)
     await page.getByRole('button', { name: 'Calendar' }).click();
-    await expect(page.getByText('Navigation Test').first()).toBeVisible();
+    await page.getByRole('button', { name: 'New workout' }).click();
+    await expect(page.getByRole('button', { name: 'Start Navigation Test now' })).toBeVisible();
     
     // Cleanup
     fs.unlinkSync(filePath);

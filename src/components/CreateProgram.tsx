@@ -219,7 +219,7 @@ export function CreateProgram({ onComplete, onCancel, onSelectGZCLP, onSelectBal
               {[
                 { mode: 'weekly' as const, label: 'Specific days', desc: 'Same days each week' },
                 { mode: 'interval' as const, label: 'Every X days', desc: 'Regular interval' },
-                { mode: 'flexible' as const, label: 'Flexible', desc: 'Whenever I want' },
+                { mode: 'flexible' as const, label: 'Flexible', desc: 'No set days: start it from New workout' },
               ].map(({ mode, label, desc }) => (
                 <button
                   key={mode}

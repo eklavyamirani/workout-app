@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { scheduleEveryDay } from './helpers';
 
 test.describe('Auth Gate', () => {
   test.beforeEach(async ({ page }) => {
@@ -34,7 +35,7 @@ test.describe('Auth Gate', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('Test Program');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Test Activity');
     await page.getByRole('button', { name: 'Add Activity' }).click();
@@ -53,7 +54,7 @@ test.describe('Auth Gate', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('Persistent Program');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Activity');
     await page.getByRole('button', { name: 'Add Activity' }).click();
@@ -86,7 +87,7 @@ test.describe('Auth Gate', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('No Sync Program');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Activity');
     await page.getByRole('button', { name: 'Add Activity' }).click();

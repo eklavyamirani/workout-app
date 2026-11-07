@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, scheduleEveryDay } from './helpers';
 
 test.describe('Program Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -90,7 +90,7 @@ test.describe('Program Management', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('Test Program');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Test Activity');
     await page.getByRole('button', { name: 'Add Activity' }).click();

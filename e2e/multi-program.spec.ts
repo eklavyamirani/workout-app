@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, scheduleEveryDay } from './helpers';
 
 test.describe('Multi-Program Workflow', () => {
   test.beforeEach(async ({ page }) => {
@@ -53,7 +53,7 @@ test.describe('Multi-Program Workflow', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     
     // Schedule: Flexible for simplicity
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     
     // Add activities
@@ -79,7 +79,7 @@ test.describe('Multi-Program Workflow', () => {
     await page.getByPlaceholder('e.g., Violin Practice').fill('Ballet Practice');
     await page.getByRole('button', { name: 'Continue' }).click();
     
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     
     await page.getByPlaceholder('Activity name').fill('Barre Work');
@@ -124,7 +124,7 @@ test.describe('Multi-Program Workflow', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('Violin');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Practice');
     await page.getByRole('button', { name: 'Add Activity' }).click();
@@ -137,7 +137,7 @@ test.describe('Multi-Program Workflow', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('e.g., Violin Practice').fill('Ballet');
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByText('Flexible').click();
+    await scheduleEveryDay(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByPlaceholder('Activity name').fill('Warm-up');
     await page.getByRole('button', { name: 'Add Activity' }).click();

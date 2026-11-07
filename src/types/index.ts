@@ -5,6 +5,7 @@ export interface ScheduleConfig {
   mode: 'weekly' | 'interval' | 'flexible' | 'rotation';
   daysOfWeek?: number[];  // 0-6 for weekly mode (0 = Sunday)
   intervalDays?: number;  // e.g., every 2 days
+  until?: string;  // last local date (YYYY-MM-DD) the schedule puts a session on; set by Stop schedule
 }
 
 export interface Program {
@@ -245,6 +246,8 @@ export interface ActivityLog {
   customValues?: Record<string, string | number | boolean>;
   // Per-activity notes (e.g., combination details for ballet)
   notes?: string;
+  // Skipped in this session: counts as done for Finish, logs nothing
+  skipped?: boolean;
 }
 
 export interface Session {

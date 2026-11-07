@@ -115,6 +115,11 @@ export default function App() {
     setActivities({ ...activities, [program.id]: programActivities });
   }
 
+  async function handleUpdateProgram(program: Program) {
+    await programStorage.save(program);
+    setPrograms(prev => prev.map(p => (p.id === program.id ? program : p)));
+  }
+
   async function handleGZCLPComplete(program: Program, programActivities: Activity[], workoutDays: GZCLPWorkoutDay[]) {
     await programStorage.save(program);
     await activityStorage.saveAll(program.id, programActivities);
@@ -139,6 +144,18 @@ export default function App() {
       ? workoutDayFor(program, gzclpDays[programId] || [], session)
       : undefined;
     const programActivities = activitiesForDay(activities[programId] || [], workoutDay);
+
+    // Starting a skipped day (New workout) reopens it; a skip logs nothing to lose
+    if (session?.status === 'skipped') {
+      session = {
+        ...session,
+        status: 'in-progress',
+        startTime: new Date().toISOString(),
+        skipReason: undefined,
+        ...(workoutDay ? { workoutDay: workoutDay.dayNumber } : {}),
+      };
+      await sessionStorage.save(session);
+    }
 
     if (!session) {
       session = {
@@ -393,6 +410,7 @@ export default function App() {
             onSelectProgram={() => {}}
             onDeleteProgram={handleDeleteProgram}
             onImportProgram={handleImportProgram}
+            onUpdateProgram={handleUpdateProgram}
           />
         )}
       </div>

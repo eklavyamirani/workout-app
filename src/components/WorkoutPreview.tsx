@@ -51,6 +51,7 @@ function LoggedResult({ log }: { log: ActivityLog }) {
           Done{log.duration ? ` · ${log.duration} min` : ''}
         </div>
       )}
+      {log.skipped && <div className="text-sm text-gray-500">Skipped</div>}
       {log.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{log.notes}</p>}
     </div>
   );

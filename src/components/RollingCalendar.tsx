@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Play, SkipForward, Eye, ChevronRight } from 'lucide-react';
+import { Play, SkipForward, Eye, ChevronRight, Plus, ChevronDown } from 'lucide-react';
 import type { Program, Activity, Session, ScheduledSession, GZCLPWorkoutDay } from '../types';
 import { workoutDayFor, activitiesForDay } from '../utils/gzclp';
 import { localDateString, addDays } from '../utils/date';
 import { pastSessions } from '../utils/history';
+import { isScheduledOn } from '../utils/schedule';
 import { WorkoutPreview } from './WorkoutPreview';
 
 interface RollingCalendarProps {
@@ -99,29 +100,18 @@ function getScheduledSessionsForDate(
   gzclpDays: Record<string, GZCLPWorkoutDay[]>
 ): ScheduledSession[] {
   const dateStr = formatDate(date);
-  const dayOfWeek = date.getDay();
   const result: ScheduledSession[] = [];
 
   for (const program of programs) {
     if (!program.isActive) continue;
 
-    let isScheduled = false;
-
-    if (program.schedule.mode === 'weekly') {
-      isScheduled = program.schedule.daysOfWeek?.includes(dayOfWeek) ?? false;
-    } else if (program.schedule.mode === 'flexible' || program.schedule.mode === 'rotation') {
-      // Flexible and rotation programs show every day (rotation determines which workout)
-      isScheduled = true;
-    } else if (program.schedule.mode === 'interval') {
-      // For interval, calculate based on creation date
-      const createdDate = new Date(program.createdAt);
-      const daysDiff = Math.floor((date.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
-      isScheduled = daysDiff >= 0 && daysDiff % (program.schedule.intervalDays ?? 1) === 0;
-    }
+    const sessionKey = `${dateStr}:${program.id}`;
+    const session = sessions[sessionKey];
+    // A day shows a program when its schedule puts one there, or a session was
+    // started or skipped there (e.g. a flexible program started from New workout)
+    const isScheduled = isScheduledOn(program, date) || session !== undefined;
 
     if (isScheduled) {
-      const sessionKey = `${dateStr}:${program.id}`;
-      const session = sessions[sessionKey];
       // GZCLP: the day a session was started on, else the next day in the rotation (#19)
       const workoutDay = program.type === 'gzclp'
         ? workoutDayFor(program, gzclpDays[program.id] || [], session)
@@ -154,6 +144,8 @@ export function RollingCalendar({
   onSkipSession,
 }: RollingCalendarProps) {
   const [preview, setPreview] = useState<{ scheduled: ScheduledSession; dateLabel: string } | null>(null);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const startablePrograms = programs.filter(p => p.isActive);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -182,10 +174,54 @@ export function RollingCalendar({
 
   return (
     <div className="p-4 space-y-4">
+      {/* Ad hoc: start any program today, scheduled or not (#43) */}
+      {startablePrograms.length > 0 && (
+        <section aria-label="New workout" className="bg-white rounded-lg border border-gray-200">
+          <button
+            onClick={() => setShowStartPicker(v => !v)}
+            aria-expanded={showStartPicker}
+            className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left font-medium text-blue-700 hover:bg-blue-50 rounded-lg"
+          >
+            <span className="flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              New workout
+            </span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${showStartPicker ? 'rotate-180' : ''}`} />
+          </button>
+          {showStartPicker && (
+            <ul className="border-t border-gray-100 divide-y divide-gray-100">
+              {startablePrograms.map(program => {
+                const todaySession = sessions[`${todayStr}:${program.id}`];
+                const label = todaySession?.status === 'in-progress'
+                  ? 'Continue'
+                  : todaySession?.status === 'completed' ? 'Done today' : 'Start';
+                return (
+                  <li key={program.id} className="flex items-center justify-between gap-2 px-4 py-2">
+                    <span className="min-w-0 truncate text-gray-900">{program.name}</span>
+                    <button
+                      onClick={() => {
+                        setShowStartPicker(false);
+                        onStartSession(program.id, todayStr);
+                      }}
+                      disabled={todaySession?.status === 'completed'}
+                      aria-label={`${label} ${program.name} now`}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>{label}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
       {days.length === 0 && (
         <div className="text-center text-gray-500">
           <p>No sessions scheduled for the next 7 days.</p>
-          <p className="text-sm mt-2">Create a program to get started.</p>
+          <p className="text-sm mt-2">Use New workout to start one now.</p>
         </div>
       )}
       {days.map(({ date, sessions: daySessions }) => (

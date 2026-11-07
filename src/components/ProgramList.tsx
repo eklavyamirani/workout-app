@@ -1,7 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Plus, ChevronRight, Trash2, Download, Upload, Loader } from 'lucide-react';
+import { Plus, ChevronRight, Trash2, Download, Upload, Loader, CalendarX, CalendarClock } from 'lucide-react';
 import type { Program, Activity } from '../types';
 import { downloadProgramAsJson, parseImportFile, prepareImportedProgram } from '../utils/importExport';
+import { canStopSchedule, stopSchedule, resumeSchedule } from '../utils/schedule';
+import { localDateString } from '../utils/date';
 
 interface ProgramListProps {
   programs: Program[];
@@ -10,10 +12,12 @@ interface ProgramListProps {
   onSelectProgram: (program: Program) => void;
   onDeleteProgram: (programId: string) => void;
   onImportProgram: (program: Program, activities: Activity[]) => void;
+  onUpdateProgram: (program: Program) => void;
 }
 
 const PROGRAM_TYPE_LABELS: Record<string, string> = {
   weightlifting: 'Weightlifting',
+  gzclp: 'GZCLP',
   ballet: 'Ballet',
   skill: 'Skill Practice',
   cardio: 'Cardio',
@@ -24,6 +28,7 @@ const SCHEDULE_LABELS: Record<string, string> = {
   weekly: 'Weekly',
   interval: 'Interval',
   flexible: 'Flexible',
+  rotation: 'Rotation',
 };
 
 export function ProgramList({ 
@@ -33,7 +38,9 @@ export function ProgramList({
   onSelectProgram,
   onDeleteProgram,
   onImportProgram,
+  onUpdateProgram,
 }: ProgramListProps) {
+  const today = localDateString();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
@@ -164,6 +171,9 @@ export function ProgramList({
                           {program.schedule.mode === 'weekly' && program.schedule.daysOfWeek && (
                             <span> · {program.schedule.daysOfWeek.length} days/week</span>
                           )}
+                          {program.schedule.until && program.schedule.until < today && (
+                            <span> · Schedule stopped</span>
+                          )}
                         </p>
                         {programActivities.length > 0 && (
                           <p className="text-sm text-gray-400 mt-1">
@@ -174,6 +184,33 @@ export function ProgramList({
                       <ChevronRight className="w-5 h-5 text-gray-400" />
                     </div>
                   </button>
+                  {canStopSchedule(program.schedule, today) ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Stop the schedule of "${program.name}"? Upcoming sessions go away; past workouts stay. You can still start it from New workout.`)) {
+                          onUpdateProgram({ ...program, schedule: stopSchedule(program.schedule, today) });
+                        }
+                      }}
+                      aria-label={`Stop schedule of ${program.name}`}
+                      title="Stop schedule"
+                      className="ml-2 p-2 text-gray-400 hover:text-orange-500 transition-colors"
+                    >
+                      <CalendarX className="w-4 h-4" />
+                    </button>
+                  ) : program.schedule.until ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateProgram({ ...program, schedule: resumeSchedule(program.schedule) });
+                      }}
+                      aria-label={`Resume schedule of ${program.name}`}
+                      title="Resume schedule"
+                      className="ml-2 p-2 text-gray-400 hover:text-blue-500 transition-colors"
+                    >
+                      <CalendarClock className="w-4 h-4" />
+                    </button>
+                  ) : null}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

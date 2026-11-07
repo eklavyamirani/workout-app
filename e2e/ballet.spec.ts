@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, scheduleEveryDay } from './helpers';
 
 // Helper: navigate through ballet setup wizard to the routine builder step
 async function createBalletProgramToStep3(page: import('@playwright/test').Page, {
@@ -38,7 +38,7 @@ async function createBalletProgram(page: import('@playwright/test').Page, option
 
   // Step 4: Schedule — pick flexible
   await expect(page.getByText('When do you take class?')).toBeVisible();
-  await page.getByText('Flexible').click();
+  await scheduleEveryDay(page);
   await page.getByRole('button', { name: 'Create Program' }).click();
 }
 

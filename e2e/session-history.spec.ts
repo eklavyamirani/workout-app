@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, scheduleEveryDay } from './helpers';
 
 /**
  * - An in-progress workout survives a reload in the evening, when the UTC date is
@@ -22,7 +22,7 @@ async function createProgram(page: Page, name: string, exercises: string[]) {
   await page.getByPlaceholder(/Strength Training/).fill(name);
   await page.getByRole('button', { name: 'Continue' }).click();
   // Flexible: shown every day, so the next days have cards too
-  await page.getByText('Flexible').click();
+  await scheduleEveryDay(page);
   await page.getByRole('button', { name: 'Continue' }).click();
   for (const exercise of exercises) {
     await page.getByPlaceholder('Exercise name').fill(exercise);

@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, finishWorkout } from './helpers';
 
 /**
  * Regression tests for the weight training paper cuts (#16):
@@ -180,7 +180,7 @@ test.describe('Weight training', () => {
       await page.getByRole('button', { name: exercise, exact: true }).click();
       await logSet(page, '100', '5');
     }
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Today stays Day 1 (done); the next workout is Day 2
     await expect(page.getByText('Done')).toBeVisible();

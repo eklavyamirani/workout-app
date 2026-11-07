@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, finishWorkout } from './helpers';
 
 // Helper: navigate through ballet setup wizard to the routine builder step
 async function createBalletProgramToStep3(page: import('@playwright/test').Page, {
@@ -372,7 +372,7 @@ test.describe('Ballet Session', () => {
     }
 
     // All routines should be done, Finish should be enabled
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Should be back on home with Done status
     await expect(page.getByText('Done').first()).toBeVisible();
@@ -418,7 +418,7 @@ test.describe('Ballet Session', () => {
     }
 
     // Finish the session
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Session should be marked as Done
     await expect(page.getByText('Done').first()).toBeVisible();
@@ -743,7 +743,7 @@ test.describe('Carry Forward (practiceNext)', () => {
     }
 
     // Finish the session
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
     await expect(page.getByText('Done').first()).toBeVisible();
 
     // Move the completed session to "yesterday" in localStorage so carry-forward triggers

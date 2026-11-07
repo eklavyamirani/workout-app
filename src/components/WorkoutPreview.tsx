@@ -3,6 +3,7 @@ import { X, Check } from 'lucide-react';
 import type { Activity, ActivityLog, ScheduledSession, SessionStatus } from '../types';
 import { GZCLP_CONFIGS } from '../types';
 import { formatSetWeight } from '../utils/weight';
+import { setDetails, setLabels } from '../utils/sets';
 
 interface WorkoutPreviewProps {
   scheduled: ScheduledSession;
@@ -33,16 +34,21 @@ function activityDetail(activity: Activity): string | null {
 
 // What was logged for one activity, shown once a session has started
 function LoggedResult({ log }: { log: ActivityLog }) {
+  const labels = setLabels(log.sets || []);
   return (
     <div className="mt-1 space-y-1">
       {log.sets && log.sets.length > 0 && (
         <ul className="text-sm text-gray-800">
-          {log.sets.map(set => (
-            <li key={set.id}>
-              <span className="text-gray-400">Set {set.setNumber}</span>{' '}
-              {formatSetWeight(set.weight)} × {set.reps} reps
-            </li>
-          ))}
+          {log.sets.map((set, index) => {
+            const details = setDetails(set);
+            return (
+              <li key={set.id}>
+                <span className="text-gray-400">{labels[index]}</span>{' '}
+                {formatSetWeight(set.weight)} × {set.reps} reps
+                {details.length > 0 && <span className="text-xs text-gray-500"> · {details.join(' · ')}</span>}
+              </li>
+            );
+          })}
         </ul>
       )}
       {(!log.sets || log.sets.length === 0) && log.completed && (
@@ -83,6 +89,7 @@ export function WorkoutPreview({ scheduled, dateLabel, onClose }: WorkoutPreview
               <p className="text-sm text-gray-500">
                 {STATUS_LABELS[session.status]}
                 {session.duration ? ` · ${session.duration} min` : ''}
+                {session.effort ? ` · effort ${session.effort}/10` : ''}
                 {session.skipReason ? ` · ${session.skipReason}` : ''}
               </p>
             )}

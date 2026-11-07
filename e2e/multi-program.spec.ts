@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, finishWorkout } from './helpers';
 
 test.describe('Multi-Program Workflow', () => {
   test.beforeEach(async ({ page }) => {
@@ -154,7 +154,7 @@ test.describe('Multi-Program Workflow', () => {
     await page.getByRole('button', { name: /Start|Resume/ }).click();
     await page.waitForTimeout(500);
     await page.getByRole('button', { name: 'Done' }).click();
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
     
     // Violin should now show as done
     await expect(page.getByText('Done').first()).toBeVisible();

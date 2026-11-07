@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, finishWorkout } from './helpers';
 
 /**
  * Regression tests for the in-session issues:
@@ -139,7 +139,7 @@ test.describe('Session notes and sync', () => {
     await logSet(page, '95', '8');
     await page.getByRole('button', { name: 'Curl', exact: true }).click();
     await logSet(page, '25', '12');
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
     const session = await storedSession(page);
     expect(session.status).toBe('completed');
     expect(session.notes).toBe('Slept badly');

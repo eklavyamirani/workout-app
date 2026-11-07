@@ -226,9 +226,10 @@ export interface SetLog {
   weight: number;
   reps: number;
   isWarmup: boolean;
-  isAmrap?: boolean;
-  rpe?: number;  // 1-10 scale
-  restDuration?: number;  // seconds
+  isAmrap?: boolean;  // GZCLP: the tier's AMRAP working set
+  targetReps?: number;  // GZCLP: the tier's prescribed reps when the set was logged
+  rpe?: number;  // 1-10 scale, from reps in reserve (10 - RIR)
+  restDuration?: number;  // seconds since the exercise's previous set; absent after a break
   timestamp: string;
 }
 
@@ -257,6 +258,7 @@ export interface Session {
   duration?: number;  // total minutes
   activities: ActivityLog[];
   notes?: string;
+  effort?: number;  // 1-10 session effort, asked at Finish
   practiceNext?: string;  // what to practice next session
   skipReason?: string;
   workoutDay?: number;  // GZCLP rotation day (1-4) this session follows

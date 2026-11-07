@@ -8,6 +8,7 @@ This application is a workout tracker that I want to use to track my workouts. M
 ## Features
 - Multiple program types: GZCLP weightlifting, ballet, skill practice, cardio, custom
 - Track weights, sets, reps, durations, and ballet routines
+- Log rest between sets (automatic), warm-ups, reps left in the tank, GZCLP AMRAP sets, and how hard each workout was
 - Rolling calendar with upcoming sessions
 - Cross-device sync with user accounts (optional)
 - Anonymous mode — works fully offline with localStorage, just like a static site

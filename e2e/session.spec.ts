@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, finishWorkout } from './helpers';
 
 test.describe('Session Tracking', () => {
   test.beforeEach(async ({ page }) => {
@@ -50,7 +50,7 @@ test.describe('Session Tracking', () => {
     await page.getByRole('button', { name: 'Done' }).click();
 
     // Complete the session
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Should be back on home page with session marked complete
     await expect(page.getByText('Done').first()).toBeVisible();
@@ -127,7 +127,7 @@ test.describe('Session Tracking', () => {
     await expect(page.locator('span.font-medium').filter({ hasText: '135 lbs' })).toBeVisible();
 
     // Complete the session
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Should be back on home page
     await expect(page.getByText('Done')).toBeVisible();

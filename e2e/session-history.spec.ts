@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, finishWorkout } from './helpers';
 
 /**
  * - An in-progress workout survives a reload in the evening, when the UTC date is
@@ -67,7 +67,7 @@ test.describe('Session history', () => {
     await page.getByRole('button', { name: 'Curl', exact: true }).click();
     await logSet(page, '25', '12');
     await page.getByLabel('Session notes').fill('Felt strong');
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Today: the done card opens the details
     await page.getByRole('button', { name: 'View Pull Day' }).first().click();
@@ -103,7 +103,7 @@ test.describe('Session history', () => {
     await page.getByRole('button', { name: 'Continue Leg Day, Yesterday' }).click();
     await expect(page.getByText('Set 1', { exact: true })).toBeVisible();
     await logSet(page, '185', '5');
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Both sets are on the 1 Nov workout, which is now finished
     await expect(page.getByRole('button', { name: 'Continue Leg Day, Yesterday' })).toHaveCount(0);
@@ -124,7 +124,7 @@ test.describe('Session history', () => {
     // Done tabs read "Squat ✓"
     await page.getByRole('button', { name: /^Squat( ✓)?$/ }).click();
     await expect(page.getByLabel('Weight (lbs)')).toHaveValue('185');
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Next session: each exercise starts from its own last session
     await page.clock.setSystemTime(new Date('2026-11-03T17:30:00-08:00'));

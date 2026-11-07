@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { enterAnonymousMode } from './helpers';
+import { enterAnonymousMode, finishWorkout } from './helpers';
 
 test.describe('Rolling Calendar', () => {
   test.beforeEach(async ({ page }) => {
@@ -83,7 +83,7 @@ test.describe('Rolling Calendar', () => {
     // Start and complete session
     await page.getByRole('button', { name: 'Start' }).first().click();
     await page.getByRole('button', { name: 'Done' }).click();
-    await page.getByRole('button', { name: 'Finish' }).click();
+    await finishWorkout(page);
 
     // Reload the page
     await page.reload();

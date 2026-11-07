@@ -7,6 +7,10 @@ import { RoutineBuilder } from './RoutineBuilder';
 import { ExerciseReferencePopover } from './ExerciseReferencePopover';
 import { getBaseExerciseId } from '../utils/exerciseId';
 import { sanitizeWeightInput, parseWeight, formatWeight, formatSetWeight } from '../utils/weight';
+import {
+  RIR_CHOICES, restSeconds, rirToRpe, rpeToRir, withSetRoles, nextIsAmrap, asksEffort, missedTarget,
+  formatRest, setDetails, setLabels,
+} from '../utils/sets';
 import { logger } from '../utils/logger';
 
 interface SessionViewProps {
@@ -106,6 +110,12 @@ export function SessionView({
   const [deletedSet, setDeletedSet] = useState<{ activityId: string; set: SetLog; index: number } | null>(null);
   const currentWeight = parseWeight(weightText);
   const [currentReps, setCurrentReps] = useState(0);
+  // Stays on for the exercise's run of warm-ups; off again on another exercise
+  const [isWarmup, setIsWarmup] = useState(false);
+  // Ticks the rest clock shown since the exercise's last set
+  const [now, setNow] = useState(() => Date.now());
+  // Finish asks for the session's effort before completing it
+  const [askingEffort, setAskingEffort] = useState(false);
 
   // In-session editing
   const [isEditing, setIsEditing] = useState(false);
@@ -119,6 +129,15 @@ export function SessionView({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isEditing]);
+
+  useEffect(() => {
+    if (!askingEffort) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setAskingEffort(false);
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [askingEffort]);
 
   // Exercise reference popover
   const [referenceTarget, setReferenceTarget] = useState<{ id: string; name: string } | null>(null);
@@ -136,7 +155,19 @@ export function SessionView({
     const last = source?.[source.length - 1];
     setWeightText(formatWeight(last?.weight ?? currentActivity.startingWeight ?? 0));
     setCurrentReps(last?.reps ?? (currentActivity.tier ? GZCLP_CONFIGS[currentActivity.tier].reps : 0));
+    setIsWarmup(false);
   }, [currentActivity?.id]);
+
+  const lastSet = currentLog?.sets?.[currentLog.sets.length - 1];
+  const restNow = restSeconds(lastSet, new Date(now));
+  const loggedLabels = setLabels(currentLog?.sets || []);
+
+  useEffect(() => {
+    if (!lastSet) return;
+    setNow(Date.now());
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [lastSet?.id]);
 
   // Fold the note drafts into a session, so every save carries them
   function withNotes(base: Session): Session {
@@ -230,15 +261,25 @@ export function SessionView({
     }
   }
 
-  // Replace the current activity's sets, numbering them 1..n
+  // Replace the current activity's sets, numbering them 1..n and marking the AMRAP set
   function saveSets(sets: SetLog[]) {
-    const renumbered = sets.map((set, i) => ({ ...set, setNumber: i + 1 }));
+    const numbered = withSetRoles(sets, currentActivity.tier);
     saveSession({
       ...session,
       activities: session.activities.map(a =>
-        a.activityId === currentActivity.id ? { ...a, sets: renumbered } : a
+        a.activityId === currentActivity.id ? { ...a, sets: numbered } : a
       ),
     });
+  }
+
+  // Reps in reserve for a logged set, stored as RPE; tapping the chosen value clears it
+  function rateSet(setId: string, rir: number) {
+    const sets = currentLog?.sets || [];
+    saveSets(sets.map(s => {
+      if (s.id !== setId) return s;
+      const rpe = rirToRpe(rir);
+      return { ...s, rpe: s.rpe === rpe ? undefined : rpe };
+    }));
   }
 
   // Removes a wrongly logged set; the undo bar can put it back (#36)
@@ -266,26 +307,31 @@ export function SessionView({
     const updatedActivities = [...session.activities];
     const existingIndex = updatedActivities.findIndex(a => a.activityId === currentActivity.id);
 
+    const loggedAt = new Date();
+    const rest = restSeconds(lastSet, loggedAt);
+    const tier = currentActivity.tier;
     const newSet: SetLog = {
-      id: `set_${Date.now()}`,
+      id: `set_${loggedAt.getTime()}`,
       setNumber: (currentLog?.sets?.length || 0) + 1,
       weight: currentWeight,
       reps: currentReps,
-      isWarmup: false,
-      timestamp: new Date().toISOString(),
+      isWarmup,
+      ...(tier && !isWarmup ? { targetReps: GZCLP_CONFIGS[tier].reps } : {}),
+      ...(rest !== undefined ? { restDuration: rest } : {}),
+      timestamp: loggedAt.toISOString(),
     };
 
     if (existingIndex >= 0) {
       const existing = updatedActivities[existingIndex];
       updatedActivities[existingIndex] = {
         ...existing,
-        sets: [...(existing.sets || []), newSet],
+        sets: withSetRoles([...(existing.sets || []), newSet], tier),
       };
     } else {
       updatedActivities.push({
         activityId: currentActivity.id,
         trackingType: 'sets-reps-weight',
-        sets: [newSet],
+        sets: withSetRoles([newSet], tier),
       });
     }
 
@@ -295,13 +341,16 @@ export function SessionView({
     });
   }
 
-  function handleFinish() {
+  // effort is the 1-10 rating from the Finish dialog; undefined when skipped
+  function handleFinish(effort?: number) {
     notesPending.current = false;
+    setAskingEffort(false);
     const completedSession: Session = {
       ...withNotes(session),
       status: 'completed',
       endTime: new Date().toISOString(),
       duration: Math.floor((Date.now() - new Date(session.startTime!).getTime()) / 60000),
+      effort,
       practiceNext: practiceNext || undefined,
     };
     onComplete(completedSession);
@@ -366,7 +415,7 @@ export function SessionView({
                 </button>
               )}
               <button
-                onClick={handleFinish}
+                onClick={() => setAskingEffort(true)}
                 disabled={!allActivitiesComplete}
                 className="px-4 py-2 bg-green-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-600 transition-colors"
               >
@@ -559,25 +608,56 @@ export function SessionView({
                 {currentLog?.sets && currentLog.sets.length > 0 && (
                   <div className="space-y-2">
                     <h3 className="text-sm font-semibold text-gray-500 uppercase">Logged Sets</h3>
-                    {currentLog.sets.map((set) => (
-                      <div
-                        key={set.id}
-                        className="flex items-center gap-2 pl-3 pr-1 py-1 bg-gray-50 rounded-lg"
-                      >
-                        <span className="text-sm text-gray-500">Set {set.setNumber}</span>
-                        <span className="flex-1 text-right font-medium">
-                          {formatSetWeight(set.weight)} × {set.reps} reps
-                        </span>
-                        <button
-                          onClick={() => deleteSet(set.id)}
-                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          aria-label={`Delete set ${set.setNumber}`}
-                          title="Delete set"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
+                    {currentLog.sets.map((set, index) => {
+                      const label = loggedLabels[index];
+                      // Reps left is asked on the newest set only, as buttons
+                      const rating = set.id === lastSet?.id && asksEffort(set, currentActivity.tier);
+                      const details = setDetails(set, !rating);
+                      return (
+                        <div key={set.id} className="pl-3 pr-1 py-1 bg-gray-50 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm ${set.isWarmup ? 'text-gray-400 italic' : 'text-gray-500'}`}>{label}</span>
+                            <span className={`flex-1 text-right font-medium ${missedTarget(set) ? 'text-amber-700' : ''}`}>
+                              {formatSetWeight(set.weight)} × {set.reps} reps
+                            </span>
+                            <button
+                              onClick={() => deleteSet(set.id)}
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              aria-label={`Delete ${label.toLowerCase()}`}
+                              title="Delete set"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {details.length > 0 && (
+                            <p className="pb-1 text-xs text-gray-500">{details.join(' · ')}</p>
+                          )}
+                          {rating && (
+                            <div role="group" aria-label="Reps left in the tank" className="flex flex-wrap items-center gap-1 pb-1">
+                              <span className="basis-full text-xs text-gray-500">Reps left in the tank?</span>
+                              {RIR_CHOICES.map(rir => {
+                                const selected = set.rpe !== undefined && rpeToRir(set.rpe) === rir;
+                                return (
+                                  <button
+                                    key={rir}
+                                    onClick={() => rateSet(set.id, rir)}
+                                    aria-pressed={selected}
+                                    aria-label={rir === 4 ? '4 or more reps left' : `${rir} ${rir === 1 ? 'rep' : 'reps'} left`}
+                                    className={`min-w-[2.5rem] px-2 py-1.5 text-sm rounded border transition-colors ${
+                                      selected
+                                        ? 'bg-blue-500 border-blue-500 text-white'
+                                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    {rir === 4 ? '4+' : rir}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -597,9 +677,21 @@ export function SessionView({
 
                 {/* Input new set */}
                 <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase">
-                    Log Set {(currentLog?.sets?.length || 0) + 1}
-                  </h3>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase">
+                      {isWarmup
+                        ? `Log Warm-up ${(currentLog?.sets || []).filter(s => s.isWarmup).length + 1}`
+                        : `Log Set ${(currentLog?.sets || []).filter(s => !s.isWarmup).length + 1}`}
+                    </h3>
+                    {restNow !== undefined && (
+                      <span className="text-sm font-mono text-gray-500 whitespace-nowrap" title="Time since your last set">
+                        Rest {formatRest(restNow)}
+                      </span>
+                    )}
+                  </div>
+                  {!isWarmup && nextIsAmrap(currentLog?.sets || [], currentActivity.tier) && (
+                    <p className="-mt-2 text-sm text-blue-600">AMRAP: as many reps as you can</p>
+                  )}
 
                   {/* Stacked on phones so weight and reps each get the full width (#21) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -667,12 +759,24 @@ export function SessionView({
                     </div>
                   </div>
 
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={isWarmup}
+                      onChange={(e) => setIsWarmup(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    Warm-up set
+                  </label>
+
                   <button
                     onClick={logSet}
                     disabled={currentReps <= 0}
-                    className="w-full py-3 bg-blue-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-600 transition-colors"
+                    className={`w-full py-3 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                      isWarmup ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-500 hover:bg-blue-600'
+                    }`}
                   >
-                    Log Set ({formatSetWeight(currentWeight)} × {currentReps} reps)
+                    Log {isWarmup ? 'Warm-up' : 'Set'} ({formatSetWeight(currentWeight)} × {currentReps} reps)
                   </button>
                 </div>
               </div>
@@ -762,6 +866,48 @@ export function SessionView({
                 onRoutinesChange={setEditRoutines}
                 compact
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session effort, asked on Finish */}
+      {askingEffort && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setAskingEffort(false); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="effort-title" className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-4 space-y-4">
+            <div>
+              <h3 id="effort-title" className="text-lg font-semibold text-gray-900">How hard was this workout?</h3>
+              <p className="text-sm text-gray-500">1 is very easy, 10 is all you had.</p>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {Array.from({ length: 10 }, (_, i) => i + 1).map(effort => (
+                <button
+                  key={effort}
+                  onClick={() => handleFinish(effort)}
+                  aria-label={`Effort ${effort}`}
+                  className={`py-3 rounded-lg border text-lg font-medium transition-colors ${
+                    session.effort === effort
+                      ? 'bg-green-500 border-green-500 text-white'
+                      : 'bg-white border-gray-300 text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  {effort}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-between">
+              <button
+                onClick={() => setAskingEffort(false)}
+                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Back to workout
+              </button>
+              <button
+                onClick={() => handleFinish(session.effort)}
+                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Finish without rating
+              </button>
             </div>
           </div>
         </div>

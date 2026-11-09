@@ -168,9 +168,9 @@ with a separate runtime role, and sign-in through the platform's Pocket ID. Deci
 
 `deploy/README.md` describes the local full-stack environment (Traefik, Authentik, Postgres).
 
-**PostgREST preview.** A PR labelled `preview` *and* `preview:postgrest` gets a preview where
-the platform's PostgREST replaces the .NET API on the same tables (decision 0018, app-platform
-record 0046). `db/migrations/` holds the schema and the sync API as SQL functions
+**PostgREST preview.** A PR the owner approves with `scripts/preview azure workout <pr> --variant
+postgrest` (in the platform repo) gets a preview where the platform's PostgREST replaces the .NET
+API on the same tables (decisions 0018 and 0020, app-platform records 0046 and 0052). `db/migrations/` holds the schema and the sync API as SQL functions
 (`/api/rpc/sync_push`, `/api/rpc/sync_pull`, same JSON as `/api/sync/*`); CI builds the
 `workout-db` image that applies them. Production keeps the .NET API.
 

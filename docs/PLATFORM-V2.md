@@ -13,12 +13,16 @@ What platform v2 uses from this repository, unchanged:
   `OIDC_ISSUER`, `OIDC_AUDIENCE`, `PLATFORM_CA_FILE`, `PORT`
 
 Added on this branch:
-- `.github/workflows/platform-v2-images.yml`: builds both images on pushes
-  to `main` and on same-repo pull requests labelled `preview`, pushes them to
-  the platform's ACR tagged by commit SHA (Azure OIDC federation).
+- `.github/workflows/platform-v2-images.yml`: builds `workout-web`,
+  `workout-api` and `workout-db` on pushes to `main` and on same-repo pull
+  requests, pushes them to `ghcr.io/eklavyamirani` tagged by commit SHA with
+  this repository's own token, and attests their provenance. No Azure
+  access (decision 0020, app-platform record 0052).
 
 The Kubernetes manifests (Helm chart) live in the platform repo
 (`gitops/apps/workout/chart`), so the app repo stays platform-neutral.
 Production releases are promoted with `scripts/promote <target> workout <sha>`
-in the platform repo; pull requests labelled `preview` get
-`https://workout-pr-<n>.<platform domain>` automatically.
+in the platform repo, which pins each image's digest after verifying it was
+built by this repository's main run. A pull request gets
+`https://workout-pr-<n>.<platform domain>` only when the owner approves it with
+`scripts/preview azure workout <pr>` (labels deploy nothing).

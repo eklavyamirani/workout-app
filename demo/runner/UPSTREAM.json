@@ -1,0 +1,22 @@
+{
+  "about": "demo/runner/, demo/CONTRACT.md and two checks in demo/test/ are copied unchanged from the violin app, where the runner and the contract are maintained. Do not edit them here: change them in violin, then copy them back and update `commit`. node demo/test/runner-drift.mjs compares this copy with violin's. Where the contract does not fit this full-stack app, demo/README.md says so. See docs/decisions/0021-demo-kit.md.",
+  "repo": "eklavyamirani/violin-practice-system",
+  "commit": "da7db0742f1aab76a3327c8683feafc8aee364fc",
+  "copied": "2026-11-19",
+  "files": [
+    "runner/assemble.mjs",
+    "runner/demo.mjs",
+    "runner/fake-mic.mjs",
+    "runner/media.mjs",
+    "runner/proposal.mjs",
+    "runner/publish.mjs",
+    "runner/record.mjs",
+    "runner/static-server.mjs",
+    "runner/template.mjs",
+    "runner/tts.mjs",
+    "test/same-structure.mjs",
+    "test/template.test.mjs",
+    "CONTRACT.md"
+  ],
+  "same_dependencies": "package.json"
+}

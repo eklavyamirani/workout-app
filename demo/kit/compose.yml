@@ -1,0 +1,98 @@
+# Demo kit: the back end of the workout app for one demo session (demo/kit/serve.mjs starts and
+# stops it; do not run it by hand). It is deploy/docker-compose.yml without Traefik, the nginx
+# front end and Authentik:
+#
+#   db       Postgres 18.6 with the runtime role (deploy/initdb), data in tmpfs: gone on `down`
+#   migrate  the API image, --migrate as the database owner (as on the platform)
+#   seed     the API image, --seed fixture (server/Data/Seed/fixture.sql, the preview fixture)
+#   api      the API as the NOBYPASSRLS runtime role, on a random 127.0.0.1 port
+#
+# Sign-in: the API trusts the kit's stand-in identity provider, which the kit serves from its own
+# process on the Mac (DEMO_KIT_PORT). It issues tokens for the fixture users only (issuer
+# urn:workout-app:fixture) and exists only while the kit runs. Each demo session is its own compose
+# project (workout-demo-<port>), so it never touches the developer's deploy/ stack or its volumes.
+name: ${COMPOSE_PROJECT_NAME:-workout-demo}
+
+x-api-image: &api-image
+  # Tagged with the git tree hash of server/, so the image is built once per version of the API
+  image: workout-demo-api:${DEMO_API_TAG:?set by demo/kit/serve.mjs}
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=32m
+  restart: "no"
+
+services:
+  db:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_DB: workout
+      POSTGRES_USER: workout
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+    secrets:
+      - postgres-password
+      - app-role-password
+    tmpfs:
+      - /var/lib/postgresql:rw,size=256m
+    volumes:
+      - ../../deploy/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workout -d workout"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    <<: *api-image
+    build:
+      context: ../../server
+      dockerfile: Dockerfile
+    command: ["--migrate"]
+    environment:
+      DATABASE_URL: "postgres://workout@db:5432/workout"
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres-password
+      DATABASE_RUNTIME_ROLE: workout_rt
+    secrets:
+      - postgres-password
+    depends_on:
+      db:
+        condition: service_healthy
+
+  seed:
+    <<: *api-image
+    command: ["--seed", "fixture"]
+    environment:
+      DATABASE_URL: "postgres://workout@db:5432/workout"
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres-password
+    secrets:
+      - postgres-password
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    <<: *api-image
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+      - /app/tmp:rw,noexec,nosuid,size=32m
+    environment:
+      DATABASE_URL: "postgres://workout_rt@db:5432/workout"
+      DATABASE_PASSWORD_FILE: /run/secrets/app-role-password
+      # Tokens carry this issuer; the fixture users are keyed by it (fixture.sql)
+      Auth__Issuer: "urn:workout-app:fixture"
+      Auth__ClientId: "workout-app-demo"
+      Auth__MetadataAddress: "http://host.docker.internal:${DEMO_KIT_PORT:?set by demo/kit/serve.mjs}/__demo/oidc/.well-known/openid-configuration"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1::5000"
+    secrets:
+      - app-role-password
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+secrets:
+  postgres-password:
+    file: ${DEMO_SECRETS_DIR:?set by demo/kit/serve.mjs}/postgres-password
+  app-role-password:
+    file: ${DEMO_SECRETS_DIR:?set by demo/kit/serve.mjs}/app-role-password

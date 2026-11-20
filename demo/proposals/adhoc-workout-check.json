@@ -1,0 +1,33 @@
+{
+  "id": "adhoc-workout-check",
+  "app": "workout",
+  "created_at": "2026-11-19T00:00:00Z",
+  "ttl": "P14D",
+  "title": "Template check: an unscheduled workout, picked up where you left off",
+  "problem": "Not a real idea. This record exercises the demo kit on a feature the app already has: starting a workout on a day the schedule doesn't plan, with each exercise's weights filled in from the last time it was logged.",
+  "evidence": [
+    {
+      "source_url": "https://github.com/eklavyamirani/workout-app/blob/e5fb1bfce9c4afd0b93ee7ec0fa03fa151567492/docs/decisions/0019-skip-exercise-adhoc-stop-schedule.md",
+      "quote_or_summary": "There was no way to start a workout that isn't on the schedule; a New workout picker now starts any active program today."
+    },
+    {
+      "source_url": "https://github.com/eklavyamirani/workout-app/blob/e5fb1bfce9c4afd0b93ee7ec0fa03fa151567492/docs/decisions/0016-prefill-from-exercise-history.md",
+      "quote_or_summary": "Opening an exercise fills weight and reps from its own last set, in this session or the most recent earlier one, before falling back to the starting weight."
+    },
+    {
+      "source_url": "https://github.com/eklavyamirani/workout-app/blob/e5fb1bfce9c4afd0b93ee7ec0fa03fa151567492/server/Data/Seed/fixture.sql",
+      "quote_or_summary": "The fixture lifter's last squat session ended on an AMRAP set of 6 at 155 pounds, which is what the demo should show prefilled."
+    }
+  ],
+  "hypothesis": "Started from New workout on an unscheduled day, the fixture lifter's squat opens at the 155 pounds last logged, so a set is logged with one tap and saved to the server.",
+  "acceptance_criteria": [
+    "The video is 60 seconds with sections of 5, 40, 10 and 5 seconds.",
+    "The walkthrough starts GZCLP from New workout, shows the squat prefilled at 155, logs a set and finishes the workout.",
+    "The finished session reaches the API (the sync push is accepted)."
+  ],
+  "success_signal": "The same structure and timings as every other demo, in workout and in violin.",
+  "effort_estimate": "S",
+  "strongest_reason_not_to_build": "Nothing to build: it is a test of the demo kit and the template on a full-stack app.",
+  "status": "test",
+  "decision_reason": null
+}

@@ -27,6 +27,7 @@ sequentially, never renumber.
 | [0018](0018-postgrest-preview-layout.md) | 2026-11-04 | PostgREST layout of the sync API (`db/`), for previews labelled `preview:postgrest`; `syncApi` runtime config | owner-approved |
 | [0019](0019-skip-exercise-adhoc-stop-schedule.md) | 2026-11-06 | Skip an exercise; New workout starts any program today; Flexible no longer recurs; Stop/Resume schedule (`schedule.until`) (#43) | agent-decided |
 | [0020](0020-ci-ghcr-no-azure.md) | 2026-11-08 | Platform images on ghcr.io with provenance, no Azure access; previews only when approved (app-platform record 0052) | agent-decided |
+| [0021](0021-demo-kit.md) | 2026-11-19 | Demo kit: whole app in the session (compose + Vite), preview fixture, stand-in sign-in for fixture users; violin's runner copied with a drift check | agent-decided |
 
 ## Status (2026-10-24)
 

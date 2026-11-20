@@ -88,6 +88,19 @@ npm run dev
 
 The Vite dev server proxies `/api`, `/application`, and `/.well-known` to `http://localhost` (Traefik on port 80).
 
+### Demo kit (fixture data, no sign-in)
+
+`demo/` starts the whole app (Postgres, API and front end) with the preview fixture, already signed in as
+a fixture user through a stand-in identity provider, and records Product Scout demo videos against it.
+It needs Docker (`colima start` on macOS). Details: [demo/README.md](demo/README.md).
+
+```bash
+npm --prefix demo ci
+npm --prefix demo run serve     # prints a URL; Ctrl+C stops it
+npm --prefix demo run stop      # stops every demo stack, leaves nothing running
+node demo/runner/demo.mjs demo/proposals/adhoc-workout-check.json   # 60-second demo video
+```
+
 ## Testing
 
 ### E2E Tests (Playwright)

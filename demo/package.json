@@ -1,0 +1,21 @@
+{
+  "name": "workout-demo",
+  "private": true,
+  "type": "module",
+  "description": "Product Scout demo kit for the workout app; the runner is violin's (runner/UPSTREAM.json).",
+  "scripts": {
+    "demo": "node runner/demo.mjs",
+    "serve": "node kit/serve.mjs",
+    "stop": "node kit/serve.mjs --stop",
+    "check": "node test/template.test.mjs",
+    "drift": "node test/runner-drift.mjs"
+  },
+  "dependencies": {
+    "ffmpeg-static": "5.2.0",
+    "ffprobe-static": "3.1.0",
+    "playwright": "1.64.1"
+  },
+  "allowScripts": {
+    "ffmpeg-static@5.2.0": true
+  }
+}

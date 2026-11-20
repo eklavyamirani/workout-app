@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       // Current unit tests are pure utility functions (no DOM).
       // Change to 'jsdom' when adding React component tests.
       environment: 'node',
-      exclude: ['e2e/**', 'node_modules/**'],
+      exclude: ['e2e/**', 'node_modules/**', 'demo/**'], // demo/: the demo kit's own node checks
     },
     server: {
       port,

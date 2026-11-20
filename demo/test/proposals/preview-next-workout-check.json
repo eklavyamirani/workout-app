@@ -1,0 +1,28 @@
+{
+  "id": "preview-next-workout-check",
+  "app": "workout",
+  "created_at": "2026-11-19T00:00:00Z",
+  "ttl": "P14D",
+  "title": "Template check: preview the next planned workout",
+  "problem": "Not a real idea. This record is the second template check for the workout kit: a read-only tour that previews the next planned day and opens the program, so two different proposals can be compared for the same sections and timings.",
+  "evidence": [
+    {
+      "source_url": "https://github.com/eklavyamirani/workout-app/blob/e5fb1bfce9c4afd0b93ee7ec0fa03fa151567492/docs/decisions/0015-workout-details-and-past-workouts.md",
+      "quote_or_summary": "A calendar card's eye button opens the workout dialog, the preview of a planned day, which this decision extended to finished workouts."
+    },
+    {
+      "source_url": "https://github.com/eklavyamirani/workout-app/blob/e5fb1bfce9c4afd0b93ee7ec0fa03fa151567492/server/Data/Seed/fixture.sql",
+      "quote_or_summary": "The fixture lifter runs GZCLP on Mondays, Wednesdays and Fridays, with two workout days."
+    }
+  ],
+  "hypothesis": "The preview names the next planned day and its three exercises, read from the fixture through the API.",
+  "acceptance_criteria": [
+    "The video is 60 seconds with sections of 5, 40, 10 and 5 seconds.",
+    "The walkthrough previews the next planned GZCLP day and shows the program on the Programs tab, changing nothing."
+  ],
+  "success_signal": "The same structure and timings as the other workout check and as violin's demos.",
+  "effort_estimate": "S",
+  "strongest_reason_not_to_build": "Nothing to build: it is a test of the demo template itself.",
+  "status": "test",
+  "decision_reason": null
+}

@@ -5,8 +5,8 @@
 //
 // Reads demo/runner/UPSTREAM.json (which files are copied, and from which commit), fetches the same files
 // from the public violin repository and reports each as same / changed upstream / changed here. Also lists
-// files violin's runner has that this copy lacks, and compares the pinned dependencies. Needs network
-// access to GitHub; no token. Exit status 1 when anything differs.
+// runner files and runner tests violin has that this copy lacks, and compares the pinned dependencies.
+// Needs network access to GitHub; no token. Exit status 1 when anything differs.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -32,10 +32,14 @@ for (const f of up.files) {
   if (state !== "same") drift++;
   console.log(`  ${state.padEnd(38)} ${f}${state === "same" ? "" : `  (here ${sha(here)}, ${ref} ${head === null ? "-" : sha(head)})`}`);
 }
-const listing = await fetch(`https://api.github.com/repos/${up.repo}/contents/demo/runner?ref=${encodeURIComponent(ref)}`).then((r) => (r.ok ? r.json() : []));
-for (const e of Array.isArray(listing) ? listing : []) {
-  const f = `runner/${e.name}`;
-  if (e.type === "file" && e.name.endsWith(".mjs") && !up.files.includes(f)) { drift++; console.log(`  ${"new upstream: copy it".padEnd(38)} ${f}`); }
+// New upstream files: any runner module, and any runner test (test/*.test.mjs; violin's other test scripts
+// drive violin's own kit).
+for (const [dir, suffix] of [["runner", ".mjs"], ["test", ".test.mjs"]]) {
+  const listing = await fetch(`https://api.github.com/repos/${up.repo}/contents/demo/${dir}?ref=${encodeURIComponent(ref)}`).then((r) => (r.ok ? r.json() : []));
+  for (const e of Array.isArray(listing) ? listing : []) {
+    const f = `${dir}/${e.name}`;
+    if (e.type === "file" && e.name.endsWith(suffix) && !up.files.includes(f)) { drift++; console.log(`  ${"new upstream: copy it".padEnd(38)} ${f}`); }
+  }
 }
 const pkg = (s) => JSON.stringify(JSON.parse(s).dependencies);
 const upPkg = await get(raw(ref, up.same_dependencies));

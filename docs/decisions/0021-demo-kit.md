@@ -83,3 +83,9 @@ the kit through `host.docker.internal`, which a loopback-bound kit doesn't
 answer there).
 
 ## Review
+- 2026-11-20: shared runner home decided by the orchestrator: keep the copies with the drift check (option
+  a); move to a small public runner repository pinned by commit when a third app needs the runner or the
+  runner next changes in a way both apps need. Copy re-synced to violin `e0949e8` (violin's contract now
+  covers server-backed apps; `publish.mjs` uploads to Downloads when given a token), adding
+  `test/publish.test.mjs`; `runner-drift.mjs` now also flags new upstream runner tests. `demo/README.md`
+  keeps only the two kit details the contract leaves to the kit.

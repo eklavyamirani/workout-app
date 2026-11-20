@@ -6,7 +6,7 @@ reason not to build. Part of eklavyamirani/app-platform#77. Decision record: `do
 
 The runner (`demo/runner/`), the kit contract (`demo/CONTRACT.md`) and the template checks are violin's,
 copied unchanged (see [The runner is a copy](#the-runner-is-a-copy)). This file covers the workout kit and
-where it differs from that contract.
+the details the contract leaves to it.
 
 ## What the machine needs
 
@@ -18,6 +18,8 @@ where it differs from that contract.
 - **Text to speech**: macOS `say` (voice Samantha), built in. On Linux see violin's notes in its
   `demo/README.md`; not tried here.
 - No account, token, sign-in or network service other than the Docker image registries on the first start.
+  Uploading the finished video to Downloads needs an upload token from the owner; without one the runner
+  records and doesn't upload.
 
 The first start builds the API image from `server/` (about 12 minutes on this machine, most of it pulling the
 .NET SDK); it is tagged with the git tree hash of `server/`, so later starts reuse it and are ready in about
@@ -35,6 +37,11 @@ The video lands in `demo/out/<proposal-id>/<proposal-id>.mp4`, with `<proposal-i
 elsewhere, `--walkthrough <name>` picks another script, `--headed` shows the browser. The runner starts the
 app, records, and stops the app again; nothing is left running, even when a walkthrough fails. A run takes
 about two minutes.
+
+After recording, the runner uploads the video to the platform's Downloads app and prints the owner's link,
+if there is an upload token in `DEMO_UPLOAD_TOKEN` or in a file named by `DEMO_UPLOAD_TOKEN_FILE` (never
+printed or logged). Without a token, or with `--no-upload`, it makes no request and says it did not upload;
+the video is still there. Details: `demo/runner/publish.mjs`.
 
 To use the lived-in app by hand:
 
@@ -102,49 +109,30 @@ the page.
 
 ```bash
 node demo/test/template.test.mjs        # template timings, proposal schema, narration fallbacks (no browser)
+node demo/test/publish.test.mjs         # upload step against a local stand-in server (curl, no network)
 node demo/test/same-structure.mjs demo/out/*/*.demo.json demo/out/*/*/*.demo.json   # after two or more demos
 node demo/test/runner-drift.mjs         # is the runner copy still violin's? (network, no token)
 ```
 
 ## The runner is a copy
 
-`demo/runner/`, `demo/CONTRACT.md`, `demo/test/template.test.mjs` and `demo/test/same-structure.mjs` are
-violin's (eklavyamirani/violin-practice-system, `demo/`), copied byte for byte at the commit in
-`demo/runner/UPSTREAM.json`, with the same pinned dependencies. Don't edit them here: change them in violin,
-copy them back, update the commit, and run `node demo/test/runner-drift.mjs` (it reports each file as same,
-changed upstream, or changed here). The workout kit needed no runner change. Why a copy and not a shared
-package yet: `docs/decisions/0021-demo-kit.md`.
+`demo/runner/`, `demo/CONTRACT.md` and the runner checks (`demo/test/template.test.mjs`,
+`demo/test/same-structure.mjs`, `demo/test/publish.test.mjs`) are violin's (eklavyamirani/violin-practice-system,
+`demo/`), copied byte for byte at the commit in `demo/runner/UPSTREAM.json`, with the same pinned
+dependencies. Don't edit them here: change them in violin, copy them back, update the commit, and run
+`node demo/test/runner-drift.mjs` (it reports each file as same, changed upstream, or changed here, and any
+runner file or runner test violin has that this copy lacks). The workout kit needed no runner change. Why a
+copy and not a shared package yet: `docs/decisions/0021-demo-kit.md`.
 
-## Where violin's contract does not fit a full-stack app
+## Kit details the contract leaves to the kit
 
-`demo/CONTRACT.md` is violin's, unchanged. Each point below is where this kit departs from it, and what the
-contract could say instead.
+`demo/CONTRACT.md` now covers server-backed apps (the points this kit first raised in
+eklavyamirani/workout-app#46: starting a database and API, the server's seed, a stand-in sign-in, the printed
+load URL, fixed-date fixtures, machine needs and start times). Two details stay specific to this kit:
 
-1. **"Start in-process … no container."** A server-backed app needs its database and API. *Instead:* start
-   what the app needs with its own local-development tooling (here compose and Vite), isolated per session
-   (own project name, ports, no shared volumes), bound to loopback; `close()` must leave nothing running, and
-   the kit also provides a stop command for what a killed run left behind.
-2. **"Load demo data through the app's own storage, from a page the kit serves."** Workout's data lives in
-   Postgres and reaches the browser through sign-in and sync. *Instead:* load it through the app's own data
-   path: client storage for a local-first app, the server's seed for a server-backed one, preferably the
-   fixture previews already use.
-3. **No sign-in, unstated mechanism.** The contract assumes the app works without identity. *Instead:* a
-   server-backed app may run a stand-in identity provider inside the kit, trusted only by the session's API,
-   issuing tokens only for fixture identities, with a per-run key; never a real account or credential, and no
-   auth bypass in the app.
-4. **"A person opening the kit's bare origin gets the same thing."** Workout's `/` is the app itself and its
-   sign-in redirect URI, so it can't also be the loader. *Instead:* the URL the kit prints loads the demo data;
-   the bare origin may be the app.
-5. **"Dates are relative to today."** Workout reuses the preview fixture, whose dates are fixed (October 2026).
-   It still demos well (upcoming days come from the schedule, prefill comes from the last session at any
-   age), but "Past workouts" (30 days) is empty from 19 November 2026 on. *Instead:* reusing the preview
-   fixture is preferred; say that a fixed-date fixture ages, and that making it date-relative is a fixture
-   change that helps previews too.
-6. **"Make it with the app's own code."** `fixture.sql` is hand-written SQL in the app's data shapes, covered
-   by the server tests. *Instead:* accept a seed the app's tests already cover.
-7. **`start` time and machine needs.** The contract doesn't say what a kit may need or how long `start` may
-   take. *Instead:* the checklist asks each kit to list its machine needs (here Docker) and its first and
-   later start times (here about 12 minutes, then about 10 s).
-8. **Containers reaching the kit.** Not in the contract; a kit detail: the API fetches the provider's keys
-   from the kit process through `host.docker.internal`. That works on colima (tried) and Docker Desktop; on
-   Linux with native Docker a kit bound to 127.0.0.1 is not reachable that way (not tried).
+1. **The fixture's dates are fixed** (October 2026, the preview fixture). The walkthroughs don't depend on
+   recent dates, but "Past workouts" (30 days) is empty from 19 November 2026 on. Making the fixture
+   date-relative is a fixture change that would help previews too.
+2. **Containers reaching the kit.** The API fetches the stand-in provider's keys from the kit process through
+   `host.docker.internal`. That works on colima (tried) and Docker Desktop; on Linux with native Docker a kit
+   bound to 127.0.0.1 is not reachable that way (not tried).

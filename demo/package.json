@@ -7,7 +7,7 @@
     "demo": "node runner/demo.mjs",
     "serve": "node kit/serve.mjs",
     "stop": "node kit/serve.mjs --stop",
-    "check": "node test/template.test.mjs",
+    "check": "node test/template.test.mjs && node test/publish.test.mjs",
     "drift": "node test/runner-drift.mjs"
   },
   "dependencies": {

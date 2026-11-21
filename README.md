@@ -101,6 +101,12 @@ npm --prefix demo run stop      # stops every demo stack, leaves nothing running
 node demo/runner/demo.mjs demo/proposals/adhoc-workout-check.json   # 60-second demo video
 ```
 
+### Product Scout
+
+`scout/` holds the Product Scout kit: a Claude session researches what lifters and dancers struggle with and
+proposes up to five changes per run; the owner approves, rejects or parks each one. Start with
+[scout/README.md](scout/README.md) and [scout/run.md](scout/run.md). Proposals are issues labelled `proposal`.
+
 ## Testing
 
 ### E2E Tests (Playwright)

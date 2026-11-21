@@ -1,0 +1,20 @@
+{
+  "about": "The Product Scout kit is maintained in violin. `same` files are copied byte for byte: don't edit them here; change them in violin, copy them back and update `commit`. `adapted` files are workout's own versions of violin's; when violin changes one, port what applies by hand and update `commit`. brief.md, sources.md and decisions.md are workout's own. node scout/drift.js compares. See docs/decisions/0022-scout-kit.md.",
+  "repo": "eklavyamirani/violin-practice-system",
+  "commit": "e67d027c9a50898af03575c67f466a166e86610d",
+  "copied": "2026-11-20",
+  "same": [
+    "scout/proposal.js",
+    "scout/proposal.test.js"
+  ],
+  "adapted": [
+    "scout/README.md",
+    "scout/run.md",
+    ".github/ISSUE_TEMPLATE/proposal.yml"
+  ],
+  "own": [
+    "scout/brief.md",
+    "scout/sources.md",
+    "scout/decisions.md"
+  ]
+}

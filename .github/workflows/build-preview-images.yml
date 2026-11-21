@@ -88,6 +88,9 @@ jobs:
       - name: Typecheck frontend
         run: npx tsc --noEmit 2>&1 | tee report/diagnostics/typecheck.log
 
+      - name: Check scout proposal format
+        run: node scout/proposal.test.js 2>&1 | tee report/diagnostics/scout-proposal.log
+
       - name: Build frontend bundle
         run: npm run build 2>&1 | tee report/diagnostics/frontend-build.log
 

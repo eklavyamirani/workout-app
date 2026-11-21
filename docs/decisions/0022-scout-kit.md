@@ -13,7 +13,7 @@ and it is maintained outside this repository. Workout is the second app to get t
 
 ## Decision
 1. **`proposal.js` and `proposal.test.js` are violin's, byte for byte,** pinned in `scout/UPSTREAM.json`
-   (violin `a832be8`). They hold nothing app-specific: the app name and the `workout-<date>-<rank>` id
+   (violin `e67d027`). They hold nothing app-specific: the app name and the `workout-<date>-<rank>` id
    prefix are set by `run.md`, the issue form's default and the README; `proposal.js` doesn't check them.
    So "adapt it for workout" needs no code change, and a verbatim copy keeps one implementation.
 2. **`scout/package.json` says `"type": "commonjs"`.** The repository is ES modules (`"type": "module"`),
@@ -24,8 +24,10 @@ and it is maintained outside this repository. Workout is the second app to get t
 4. **README, run.md and the issue form are workout's versions of violin's**: same steps and rules
    (untrusted input, drafts first, at most five proposals, about 30 calls and an hour, no Reddit,
    scheduled mode), adapted to this app's tests and sources, plus one line on a run's focus
-   (`go: <focus>`). **brief.md, sources.md and decisions.md are workout's own.** The brief is a draft from
-   the repository with every line marked as the owner's words or the scout's inference.
+   (`go: <focus area>`), worded as violin's Scheduled mode: a focus steers research and ranking only; a
+   kept focus is one owner-worded line in the brief's favour list. **brief.md, sources.md and
+   decisions.md are workout's own.** The brief is a draft from the repository with every line marked as
+   the owner's words or the scout's inference.
 5. **The test runs in CI** as a step of `Test and build OCI layouts` (the required check, 0013), and
    Vitest excludes `scout/**` (its default pattern picks up `proposal.test.js`, as with `demo/`).
 6. **Labels:** `proposal` and the seven `status: …` labels, with violin's names, colours and descriptions.
@@ -53,3 +55,6 @@ logic, and the drift check keeps the copy honest.
 confirms or rewrites the brief; workout gets the prototype flow (labels, cleanup job).
 
 ## Review
+- 2026-11-20: re-synced to violin `e67d027` before merge (run-level `focus` in `proposals.json`, `validateRun`,
+  triage header names the focus; Scheduled mode spells out ask-first and the kept focus). Workout's focus
+  line now matches violin's rule: no candidates from outside the focus.

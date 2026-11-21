@@ -34,7 +34,7 @@ None stated by the owner yet. ***(inferred, to confirm or strike:)***
 
 ## Focus areas
 
-A run can be given a focus by the owner (`go: <focus>`; see [run.md](run.md#3-research)). The owner's one example so far is "ballet focus in workout app" (owner, 2026-11-20). A focus steers one run; it is not a goal and does not change this brief.
+A run can be given a focus area by the owner (`go: <focus area>`; see [run.md → Scheduled mode](run.md#scheduled-mode)). The owner's one example so far is "ballet focus in workout app" (owner, 2026-11-20). A focus steers research and ranking; it is not a goal. With `go: <focus area> keep`, the decisions pull request adds one line, `- Focus (owner, kept <date>): <focus area, in the owner's words>.`, to "What the scout should favour" below, replacing any earlier one; a plain `go` then uses it. None is kept yet.
 
 ## Taste
 

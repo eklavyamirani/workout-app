@@ -11,12 +11,14 @@ the details the contract leaves to it.
 ## What the machine needs
 
 - **Docker**, for Postgres and the API. On macOS: `colima start` (colima and docker-cli come from `mise`), or
-  Docker Desktop. Nothing listens beyond `127.0.0.1`.
+  Docker Desktop. On Linux: Docker Engine with the compose plugin; as root, the kit starts `dockerd` itself
+  when it is installed but not running (see [Linux and cloud sessions](#linux-and-cloud-sessions)). Nothing
+  listens beyond `127.0.0.1`, except the provider's public keys on the Docker bridge on Linux.
 - **Node 20+**, the repository's `npm ci` (the kit uses the repository's own Vite) and `npm --prefix demo ci`
   (Playwright 1.64.1 and its Chromium, static ffmpeg/ffprobe; `npx --prefix demo playwright install chromium`
   if the browser isn't cached).
-- **Text to speech**: macOS `say` (voice Samantha), built in. On Linux see violin's notes in its
-  `demo/README.md`; not tried here.
+- **Text to speech**: macOS `say` (voice Samantha), built in. On Linux the runner uses what violin's runner
+  finds (espeak-ng in a cloud session); see violin's `demo/README.md`.
 - No account, token, sign-in or network service other than the Docker image registries on the first start.
   Uploading the finished video to Downloads needs an upload token from the owner; without one the runner
   records and doesn't upload.
@@ -134,5 +136,27 @@ load URL, fixed-date fixtures, machine needs and start times). Two details stay 
    recent dates, but "Past workouts" (30 days) is empty from 19 November 2026 on. Making the fixture
    date-relative is a fixture change that would help previews too.
 2. **Containers reaching the kit.** The API fetches the stand-in provider's keys from the kit process through
-   `host.docker.internal`. That works on colima (tried) and Docker Desktop; on Linux with native Docker a kit
-   bound to 127.0.0.1 is not reachable that way (not tried).
+   `host.docker.internal`. On colima and Docker Desktop, Docker forwards that to the machine's loopback; on
+   Linux the kit also serves the keys on the Docker bridge (below).
+
+## Linux and cloud sessions
+
+A cloud session's container (Linux, root, a proxy with its own CA, no Docker daemon running) needs these, and
+the kit does them itself; a Mac is unchanged.
+
+| What | The kit does | Override |
+|---|---|---|
+| No Docker daemon | As root with `dockerd` installed, starts it (log `demo/.cache/dockerd.log`); `npm --prefix demo run stop` stops that one again. Otherwise says what to run. | Start Docker yourself first |
+| API container → stand-in provider | Also listens on the Docker bridge's gateway (what `host.docker.internal` is in containers on Linux), on the kit's port, for the provider's discovery document and public keys only (GET; nothing there issues tokens). No firewall or iptables change. | — |
+| Proxy with its own CA | When `HTTPS_PROXY`/`HTTP_PROXY` is set (or `DEMO_CA_BUNDLE`), builds the API image itself: `server/Dockerfile` unchanged, on the host network (so a proxy on 127.0.0.1 works), with the proxy variables as build arguments and the CA added to the .NET SDK build stage (a named build context replaces `mcr.microsoft.com/dotnet/sdk:8.0` with the SDK plus the CA). The CA comes from `DEMO_CA_BUNDLE`, else `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE` or `CURL_CA_BUNDLE`. A `dockerd` the kit starts inherits the proxy variables for its image pulls. | `DEMO_CA_BUNDLE=/path/ca.pem` |
+| Few inotify handles | Doesn't watch files (no live reload; a demo doesn't need it). | `DEMO_WATCH=1` |
+
+What the repository can't fix, and stays with the machine or the runner:
+
+- **Docker itself**: installing Docker Engine, and `dockerd` needing root or a privileged container.
+- **The browser**: the runner's Playwright (1.64.1, `demo/package.json`) needs its own Chromium and ffmpeg
+  builds (`npx --prefix demo playwright install chromium`); a machine with another Playwright's browsers
+  only needs the runner to fall back to them. That is runner code, maintained in violin (`demo/runner/`).
+- **The voice**: the runner picks it (violin).
+- **Uploading**: no upload token in a cloud session, by design; the video is sent in the session.
+

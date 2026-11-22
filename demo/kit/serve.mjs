@@ -16,9 +16,10 @@
 //     job, the fixture seed job (server/Data/Seed/fixture.sql, the same fixture previews start from)
 //     and the API. Database data lives in tmpfs and goes with the containers.
 //
-// Needs: Docker (on macOS `colima start`; colima and docker-cli come from mise), the repository's
-// `npm ci` (for Vite) and Node 20+. The first start builds the API image (a few minutes); later
-// starts take about 15 to 30 seconds.
+// Needs: Docker (on macOS `colima start`; colima and docker-cli come from mise; on Linux as root the kit
+// starts dockerd itself if it is installed), the repository's `npm ci` (for Vite) and Node 20+. The first
+// start builds the API image (a few minutes; behind a proxy see docker.mjs); later starts take about 15 to
+// 30 seconds.
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -27,6 +28,7 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createIdp, CLIENT_ID, BASE_PATH, DEMO_GRANT } from "./idp.mjs";
+import { ensureDocker, stopKitDockerd, bridgeGateway, proxyBuild, buildApiImage } from "./docker.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const APP_ROOT = path.resolve(HERE, "../..");
@@ -40,18 +42,10 @@ function sh(cmd, args, { env, quiet = false, allowFail = false } = {}) {
   const r = spawnSync(cmd, args, { encoding: "utf8", env: { ...process.env, ...env }, maxBuffer: 32 << 20 });
   if (r.error) throw new Error(`${cmd}: ${r.error.message}`);
   if (r.status !== 0 && !allowFail) {
-    throw new Error(`${cmd} ${args.join(" ")} failed (${r.status}):\n${(r.stderr || r.stdout || "").trim().split("\n").slice(-25).join("\n")}`);
+    throw new Error(`${cmd} ${args.join(" ")} failed (${r.status}):\n${(r.stderr || r.stdout || "").trim().split("\n").slice(-80).join("\n")}`);
   }
   if (!quiet && r.stderr && r.status !== 0) log(r.stderr.trim());
   return r;
-}
-
-function requireDocker() {
-  const r = spawnSync("docker", ["info", "--format", "{{.ServerVersion}}"], { encoding: "utf8" });
-  if (r.error || r.status !== 0) {
-    throw new Error("Docker is not available. The demo kit runs Postgres and the API in Docker: on macOS run `colima start` " +
-      "(colima and docker-cli come from mise), or start Docker Desktop, then try again.");
-  }
 }
 
 // Forward /api to the API container, keeping method, headers and body
@@ -82,9 +76,15 @@ const loadPage = (query) => `<!doctype html><meta charset="utf-8"><title>Loading
 })();
 </script>`;
 
+// On Linux the kit doesn't watch files: containers (a cloud session's included) often run out of inotify
+// handles, and a demo doesn't need live reload. DEMO_WATCH=1 keeps watching. A Mac is unchanged.
+const NO_WATCH = process.platform === "linux" && process.env.DEMO_WATCH !== "1";
+
 function kitPlugin({ idp, api }) {
   return {
     name: "workout-demo-kit",
+    // Set on the resolved config: Vite's config merge drops a null `server.watch` given to createServer
+    configResolved(config) { if (NO_WATCH) config.server.watch = null; },
     configureServer(server) {
       // Added before Vite's own middlewares, so these win over vite.config.ts's /api proxy and over
       // public/runtime-config.json
@@ -154,8 +154,11 @@ function apiImage() {
  * port 0 = any free port (the runner); a person gets 8791 so the URL stays the same.
  */
 export async function start({ port = 0, user } = {}) {
-  requireDocker();
+  await ensureDocker();
   const image = apiImage();
+  // Behind a proxy (a cloud session), build the image here with the proxy and its CA, then compose uses it
+  const pb = image.build ? proxyBuild() : null;
+  if (pb) { buildApiImage(image.tag, pb); image.build = false; }
   // vite.config.ts (loadEnv) and Tailwind (content globs) resolve paths from the working directory,
   // as under `npm run dev`; `npm --prefix demo run serve` starts in demo/
   if (process.cwd() !== APP_ROOT) process.chdir(APP_ROOT);
@@ -175,6 +178,13 @@ export async function start({ port = 0, user } = {}) {
   });
   await vite.listen();
   const kitPort = vite.httpServer.address().port;
+  // The API container fetches the stand-in provider's keys from http://host.docker.internal:<kitPort>. On a
+  // Mac, Docker forwards that to this machine's loopback; on Linux it is the Docker bridge's gateway, where
+  // the kit listens too, for the provider's public discovery document and keys only.
+  let keysServer = null;
+  if (process.platform === "linux") {
+    try { keysServer = await serveKeysOnBridge(idp, kitPort); } catch (e) { await vite.close(); throw e; }
+  }
   const project = `${PROJECT_PREFIX}${kitPort}`;
   const secrets = path.join(CACHE, `secrets-${kitPort}`);
   const env = { COMPOSE_PROJECT_NAME: project, DEMO_KIT_PORT: String(kitPort), DEMO_SECRETS_DIR: secrets, DEMO_API_TAG: image.tag };
@@ -184,6 +194,7 @@ export async function start({ port = 0, user } = {}) {
     if (closed) return;
     closed = true;
     sh("docker", [...composeArgs(project), "down", "--volumes", "--remove-orphans", "--timeout", "5"], { env, allowFail: true, quiet: true });
+    if (keysServer) await new Promise((r) => keysServer.close(r));
     fs.rmSync(secrets, { recursive: true, force: true });
     fs.rmSync(path.join(CACHE, `serve-${kitPort}.pid`), { force: true });
     await vite.close();
@@ -217,6 +228,28 @@ export async function start({ port = 0, user } = {}) {
   };
 }
 
+// Linux: the provider's discovery document and keys (GET only, nothing that issues tokens) on the Docker
+// bridge's gateway address and the kit's port, so containers reach them as host.docker.internal.
+async function serveKeysOnBridge(idp, port) {
+  const host = bridgeGateway();
+  const allowed = new Set([BASE_PATH + "/.well-known/openid-configuration", BASE_PATH + "/jwks"]);
+  const s = http.createServer((req, res) => {
+    const p = new URL(req.url, "http://x").pathname;
+    if (req.method !== "GET" || !allowed.has(p)) { res.writeHead(404); return res.end(); }
+    idp.handle(req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); });
+  });
+  try {
+    await new Promise((resolve, reject) => { s.once("error", reject); s.listen(port, host, resolve); });
+  } catch (e) {
+    // Docker Desktop on Linux: the bridge is inside its VM, and it forwards host.docker.internal to this
+    // machine's loopback, as on a Mac
+    if (e.code === "EADDRNOTAVAIL") { log(`the Docker bridge (${host}) is not on this machine; relying on Docker's own host.docker.internal`); return null; }
+    throw e;
+  }
+  log(`provider keys for the API container on ${host}:${port} (the Docker bridge)`);
+  return s;
+}
+
 /** Stop every demo stack on this machine: serve.mjs processes started by hand, and their containers. */
 export function stopAll() {
   let n = 0;
@@ -237,6 +270,7 @@ export function stopAll() {
   if (fs.existsSync(CACHE)) for (const d of fs.readdirSync(CACHE).filter((d) => d.startsWith("secrets-"))) fs.rmSync(path.join(CACHE, d), { recursive: true, force: true });
   const left = spawnSync("docker", ["ps", "-a", "--filter", `label=com.docker.compose.project`, "--format", "{{.Label \"com.docker.compose.project\"}}"], { encoding: "utf8" })
     .stdout.split("\n").filter((x) => x.startsWith(PROJECT_PREFIX));
+  if (stopKitDockerd()) n++;
   log(left.length ? `still there: ${[...new Set(left)].join(", ")}` : `nothing of the demo kit is running${n ? "" : " (there was nothing to stop)"}.`);
   return n;
 }

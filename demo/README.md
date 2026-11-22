@@ -101,6 +101,7 @@ Docker, compose project workout-demo-<port> (demo/kit/compose.yml)
 |---|---|---|
 | `demo/proposals/adhoc-workout-check.json` | `kit/walkthroughs/adhoc-workout-check.mjs` | New workout on an unplanned day; squat prefilled from its last set (155 × 6); log a set, skip two, Finish; reads the session back from the API and fails if it isn't there |
 | `demo/test/proposals/preview-next-workout-check.json` | `kit/walkthroughs/preview-next-workout-check.mjs` | Read-only: preview the next planned day, the Programs tab, back |
+| `demo/proposals/workout-2026-11-21-2.json` | `kit/walkthroughs/workout-2026-11-21-2.mjs` | Prototype for #55 (needs its branch): the squat's plates per side at 155, +5, a weight the plates can't make, 185; logs a set |
 
 Both are template checks on features already on `main`, not ideas. Narration numbers and names are read from
 the page.

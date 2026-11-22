@@ -7,6 +7,7 @@ import { RoutineBuilder } from './RoutineBuilder';
 import { ExerciseReferencePopover } from './ExerciseReferencePopover';
 import { getBaseExerciseId } from '../utils/exerciseId';
 import { sanitizeWeightInput, parseWeight, formatWeight, formatSetWeight } from '../utils/weight';
+import { plateBreakdown, formatPlates, isBarbell } from '../utils/plates';
 import { logger } from '../utils/logger';
 
 interface SessionViewProps {
@@ -699,6 +700,11 @@ export function SessionView({
                         </button>
                       </div>
                       <p id="set-weight-hint" className="mt-1 text-xs text-gray-500">0 for bodyweight</p>
+                      {isBarbell(currentActivity.equipment) && currentWeight > 0 && (
+                        <p data-testid="plate-breakdown" className="mt-1 text-sm font-medium text-gray-700">
+                          {formatPlates(plateBreakdown(currentWeight))}
+                        </p>
+                      )}
                     </div>
 
                     <div className="min-w-0">

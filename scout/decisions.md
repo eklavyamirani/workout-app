@@ -15,3 +15,4 @@ One line per decision, appended by the session where the owner decided (see [REA
 - 2026-11-21 · workout-2026-11-21-1 · draft · rejected · GZCLP works out today's weight and stage for you — "I can do this manually and prefer it that way."
 - 2026-11-21 · workout-2026-11-21-2 · #55 · approved · Show which plates to load for the weight you're about to lift — "Approve for demo."
 - 2026-11-21 · workout-2026-11-21-2 · #55 · prototyped · Show which plates to load for the weight you're about to lift — "Approve for demo." (prototype #57; the demo was sent to the owner in the session)
+- 2026-11-21 · workout-2026-11-21-2 · #55 · prototyped · Show which plates to load for the weight you're about to lift — "Iterate: settings for the available plates configured globally." (round 2 on prototype #57)

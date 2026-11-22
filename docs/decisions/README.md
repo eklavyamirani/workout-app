@@ -30,6 +30,7 @@ sequentially, never renumber.
 | [0021](0021-demo-kit.md) | 2026-11-19 | Demo kit: whole app in the session (compose + Vite), preview fixture, stand-in sign-in for fixture users; violin's runner copied with a drift check | agent-decided |
 | [0022](0022-scout-kit.md) | 2026-11-20 | Product Scout kit: violin's `proposal.js` copied byte for byte with a drift check (`scout/package.json` makes it CommonJS); workout's own brief (draft), sources and run prompt; form, labels, CI step | agent-decided |
 | [0024](0024-demo-kit-linux-cloud.md) | 2026-11-21 | Demo kit on Linux/cloud: starts `dockerd` as root, provider keys on the Docker bridge (GET discovery + JWKS only), API build behind a proxy with its CA via a named build context; no file watching on Linux | agent-decided |
+| [0025](0025-prototype-cleanup-workflow.md) | 2026-11-21 | Prototype cleanup workflow: app-platform's `templates/new-app/preview-cleanup.yml` with workout's names (as violin has it); no pull_request trigger | agent-decided |
 
 ## Status (2026-10-24)
 

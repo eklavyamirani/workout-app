@@ -47,3 +47,8 @@ A cloud run shows another gap; violin's runner gains the browser fallback (re-sy
 bridge is disabled on a machine (`docker network inspect bridge` fails).
 
 ## Review
+
+- 2026-11-22: the upstream asks in item 5 landed in violin (#41, `4790d8f`): the runner falls back to an
+  installed Playwright, `ffmpeg-static` is optional, Kokoro is the Linux voice. The copy is re-synced to
+  `4790d8f`; the drift check now also covers `runner/voice/` and optional dependencies. `demo/README.md`
+  answers the contract's new item 7 (can a demo be recorded in a Linux cloud session: yes, with Docker).

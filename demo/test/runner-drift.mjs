@@ -32,16 +32,16 @@ for (const f of up.files) {
   if (state !== "same") drift++;
   console.log(`  ${state.padEnd(38)} ${f}${state === "same" ? "" : `  (here ${sha(here)}, ${ref} ${head === null ? "-" : sha(head)})`}`);
 }
-// New upstream files: any runner module, and any runner test (test/*.test.mjs; violin's other test scripts
-// drive violin's own kit).
-for (const [dir, suffix] of [["runner", ".mjs"], ["test", ".test.mjs"]]) {
+// New upstream files: any runner module, any file in runner/voice/ (the Linux voice's setup), and any runner
+// test (test/*.test.mjs; violin's other test scripts drive violin's own kit).
+for (const [dir, suffix] of [["runner", ".mjs"], ["runner/voice", ""], ["test", ".test.mjs"]]) {
   const listing = await fetch(`https://api.github.com/repos/${up.repo}/contents/demo/${dir}?ref=${encodeURIComponent(ref)}`).then((r) => (r.ok ? r.json() : []));
   for (const e of Array.isArray(listing) ? listing : []) {
     const f = `${dir}/${e.name}`;
     if (e.type === "file" && e.name.endsWith(suffix) && !up.files.includes(f)) { drift++; console.log(`  ${"new upstream: copy it".padEnd(38)} ${f}`); }
   }
 }
-const pkg = (s) => JSON.stringify(JSON.parse(s).dependencies);
+const pkg = (s) => { const j = JSON.parse(s); return JSON.stringify({ dependencies: j.dependencies, optionalDependencies: j.optionalDependencies }); };
 const upPkg = await get(raw(ref, up.same_dependencies));
 if (upPkg && pkg(upPkg) !== pkg(fs.readFileSync(path.join(DEMO, up.same_dependencies), "utf8"))) {
   drift++;

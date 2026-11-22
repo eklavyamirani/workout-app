@@ -7,13 +7,15 @@
     "demo": "node runner/demo.mjs",
     "serve": "node kit/serve.mjs",
     "stop": "node kit/serve.mjs --stop",
-    "check": "node test/template.test.mjs && node test/publish.test.mjs",
+    "check": "node test/template.test.mjs && node test/publish.test.mjs && node test/browser.test.mjs",
     "drift": "node test/runner-drift.mjs"
   },
   "dependencies": {
-    "ffmpeg-static": "5.2.0",
     "ffprobe-static": "3.1.0",
     "playwright": "1.64.1"
+  },
+  "optionalDependencies": {
+    "ffmpeg-static": "5.2.0"
   },
   "allowScripts": {
     "ffmpeg-static@5.2.0": true

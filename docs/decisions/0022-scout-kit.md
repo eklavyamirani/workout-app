@@ -58,3 +58,6 @@ confirms or rewrites the brief; workout gets the prototype flow (labels, cleanup
 - 2026-11-20: re-synced to violin `e67d027` before merge (run-level `focus` in `proposals.json`, `validateRun`,
   triage header names the focus; Scheduled mode spells out ask-first and the kept focus). Workout's focus
   line now matches violin's rule: no candidates from outside the focus.
+- 2026-11-22: the owner confirmed the brief ("All right" to the five summary guesses, 2026-11-22; class
+  frequency in their words, 2026-11-21). Those lines are marked owner-confirmed; lines outside the five stay
+  inferred. A GZCLP avoid line was added, inferred from the owner's 2026-11-21 rejection of proposal 1.

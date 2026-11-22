@@ -15,6 +15,7 @@ import { SessionView } from './components/SessionView';
 import type { Program, Activity, Session, GZCLPWorkoutDay, SetLog } from './types';
 import { gzclpDaysKey, workoutDayFor, activitiesForDay } from './utils/gzclp';
 import { lastSetsByActivity } from './utils/history';
+import { withLoggedActivities, endSession, hasResult, lastNotesByActivity, lastNextNote } from './utils/session';
 
 type ViewType = 'loading' | 'home' | 'programs' | 'create-program' | 'gzclp-setup' | 'ballet-setup' | 'session';
 
@@ -29,8 +30,9 @@ export default function App() {
     program: Program;
     activities: Activity[];
     session: Session;
-    lastPracticeNotes?: string;
+    lastNextNote?: { date: string; notes: string };
     previousSets?: Record<string, SetLog[]>;
+    previousNotes?: Record<string, { date: string; notes: string }>;
   } | null>(null);
 
   useEffect(() => {
@@ -143,7 +145,6 @@ export default function App() {
     const workoutDay = program.type === 'gzclp'
       ? workoutDayFor(program, gzclpDays[programId] || [], session)
       : undefined;
-    const programActivities = activitiesForDay(activities[programId] || [], workoutDay);
 
     // Starting a skipped day (New workout) reopens it; a skip logs nothing to lose
     if (session?.status === 'skipped') {
@@ -173,32 +174,16 @@ export default function App() {
 
     // Earlier sessions, from storage: in-memory state holds only recent ones
     const earlierSessions = await sessionStorage.getByDateRange('0000-00-00', date);
-
-    // For ballet programs, find the last completed session's practiceNext notes.
-    let lastPracticeNotes: string | undefined;
-    if (program.type === 'ballet') {
-      const allSessions = earlierSessions;
-      let latestDate = '';
-      for (const s of allSessions) {
-        if (
-          s.programId === programId &&
-          s.status === 'completed' &&
-          s.practiceNext &&
-          s.date < date &&
-          s.date > latestDate
-        ) {
-          latestDate = s.date;
-          lastPracticeNotes = s.practiceNext;
-        }
-      }
-    }
+    const all = activities[programId] || [];
 
     setCurrentSession({
       program,
-      activities: programActivities,
+      // The day's plan plus exercises this session added (#65)
+      activities: withLoggedActivities(activitiesForDay(all, workoutDay), session, all),
       session,
-      lastPracticeNotes,
+      lastNextNote: lastNextNote(earlierSessions, programId, date),
       previousSets: lastSetsByActivity(earlierSessions, programId, date),
+      previousNotes: lastNotesByActivity(earlierSessions, programId, date),
     });
     setView('session');
   }
@@ -223,6 +208,37 @@ export default function App() {
     const sessionKey = `${session.date}:${session.programId}`;
     setSessions(prev => ({ ...prev, [sessionKey]: session }));
     setCurrentSession(prev => (prev && prev.session.id === session.id ? { ...prev, session } : prev));
+  }
+
+  // An exercise added mid-workout (#65). A new one is stored with the program's
+  // activities (adhoc unless it joins the plan); the session logs it as added.
+  async function handleAddActivity(activity: Activity, isNew: boolean) {
+    const programId = activity.programId;
+    if (isNew) {
+      const updated = [...(activities[programId] || []), activity];
+      await activityStorage.saveAll(programId, updated);
+      setActivities(prev => ({ ...prev, [programId]: updated }));
+    }
+    setCurrentSession(prev => (prev && prev.program.id === programId && !prev.activities.some(a => a.id === activity.id)
+      ? { ...prev, activities: [...prev.activities, activity] }
+      : prev));
+  }
+
+  // Ends an unfinished workout from an earlier day without finishing it (#66)
+  async function handleEndSession(programId: string, date: string) {
+    const stored = sessions[`${date}:${programId}`] ?? await sessionStorage.get(date, programId);
+    if (!stored || stored.status !== 'in-progress') return;
+    const ended = endSession(stored, new Date());
+    await sessionStorage.save(ended);
+    setSessions(prev => ({ ...prev, [`${date}:${programId}`]: ended }));
+
+    // A GZCLP day that logged something counts as done for the rotation
+    const program = programs.find(p => p.id === programId);
+    if (program && ended.workoutDay !== undefined && ended.activities.some(hasResult)) {
+      const updated = { ...program, lastWorkoutDay: ended.workoutDay };
+      await programStorage.save(updated);
+      setPrograms(prev => prev.map(p => (p.id === updated.id ? updated : p)));
+    }
   }
 
   async function handleUpdateActivities(programId: string, updatedActivities: Activity[]) {
@@ -297,8 +313,14 @@ export default function App() {
         program={currentSession.program}
         activities={currentSession.activities}
         session={currentSession.session}
-        lastPracticeNotes={currentSession.lastPracticeNotes}
+        programActivities={activities[currentSession.program.id] || []}
+        lastNextNote={currentSession.lastNextNote}
         previousSets={currentSession.previousSets}
+        previousNotes={currentSession.previousNotes}
+        onAddActivity={handleAddActivity}
+        onRemoveActivity={(activityId) => setCurrentSession(prev => (prev
+          ? { ...prev, activities: prev.activities.filter(x => x.id !== activityId) }
+          : prev))}
         onUpdateSession={handleUpdateSession}
         onComplete={handleCompleteSession}
         onUpdateActivities={(updatedActivities) =>
@@ -396,6 +418,7 @@ export default function App() {
                 gzclpDays={gzclpDays}
                 onStartSession={handleStartSession}
                 onSkipSession={handleSkipSession}
+                onEndSession={handleEndSession}
                 onSplitSession={() => {}}
               />
             )}

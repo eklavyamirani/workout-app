@@ -78,6 +78,9 @@ export interface Activity {
   movements?: BalletMovement[];
   // For ballet routines - which section this routine belongs to
   section?: BalletSection;
+  // Added during a workout (#65): not part of the program's plan, only shown in the
+  // sessions that added it
+  adhoc?: boolean;
 }
 
 // Default GZCLP Exercise Library
@@ -219,6 +222,7 @@ export function getBalletExercisesForClass(classType: BalletClassType, level: Ba
 }
 
 // Session Tracking
+// 'partial': an unfinished workout that was ended without finishing it (#66)
 export type SessionStatus = 'completed' | 'skipped' | 'partial' | 'in-progress';
 
 export interface SetLog {
@@ -248,6 +252,8 @@ export interface ActivityLog {
   notes?: string;
   // Skipped in this session: counts as done for Finish, logs nothing
   skipped?: boolean;
+  // Added to this session mid-workout (#65), not in its plan
+  added?: boolean;
 }
 
 export interface Session {
@@ -260,7 +266,8 @@ export interface Session {
   duration?: number;  // total minutes
   activities: ActivityLog[];
   notes?: string;
-  practiceNext?: string;  // what to practice next session
+  practiceNext?: string;  // note for the next session of the program
+  lastActivityAt?: string;  // ISO 8601 datetime of the last save while in progress (#66)
   skipReason?: string;
   workoutDay?: number;  // GZCLP rotation day (1-4) this session follows
 }

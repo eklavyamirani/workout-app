@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen, Pencil, Video, X, Trash2, SkipForward, Undo2 } from 'lucide-react';
-import type { Program, Activity, Session, ActivityLog, SetLog, RoutineEntry, BalletSection } from '../types';
+import { ArrowLeft, Play, Pause, Check, Plus, Minus, BookOpen, Pencil, Video, X, Trash2, SkipForward, Undo2, ListPlus } from 'lucide-react';
+import type { Program, Activity, Session, ActivityLog, SetLog, RoutineEntry, BalletSection, TrackingType } from '../types';
 import { GZCLP_CONFIGS } from '../types';
 import { BalletGlossary } from './BalletGlossary';
 import { RoutineBuilder } from './RoutineBuilder';
@@ -8,18 +8,51 @@ import { ExerciseReferencePopover } from './ExerciseReferencePopover';
 import { getBaseExerciseId } from '../utils/exerciseId';
 import { sanitizeWeightInput, parseWeight, formatWeight, formatSetWeight } from '../utils/weight';
 import { logger } from '../utils/logger';
+import { workoutEnd, durationMinutes, hasResult } from '../utils/session';
 
 interface SessionViewProps {
   program: Program;
   activities: Activity[];
   session: Session;
-  lastPracticeNotes?: string;
+  // Every activity of the program, for adding one mid-workout (#65)
+  programActivities?: Activity[];
+  // The latest earlier session's note for this one (practiceNext)
+  lastNextNote?: { date: string; notes: string };
   // Sets from each activity's most recent earlier session, keyed by activity id
   previousSets?: Record<string, SetLog[]>;
+  // Each activity's notes from the last session that had any (#67)
+  previousNotes?: Record<string, { date: string; notes: string }>;
   onUpdateSession: (session: Session) => void;
   onComplete: (session: Session) => void;
   onUpdateActivities?: (activities: Activity[]) => void;
+  // Adds an exercise to this workout; isNew stores it with the program (#65)
+  onAddActivity?: (activity: Activity, isNew: boolean) => void;
+  // Takes an added exercise with nothing logged back out of this workout
+  onRemoveActivity?: (activityId: string) => void;
   onCancel: () => void;
+}
+
+const TRACKING_LABELS: Record<Exclude<TrackingType, 'custom'>, string> = {
+  'sets-reps-weight': 'Sets × reps × weight',
+  duration: 'Timed',
+  completion: 'Done / not done',
+};
+
+function defaultTrackingType(program: Program): TrackingType {
+  switch (program.type) {
+    case 'weightlifting':
+    case 'gzclp':
+      return 'sets-reps-weight';
+    case 'skill':
+    case 'cardio':
+      return 'duration';
+    default:
+      return 'completion';
+  }
+}
+
+function shortDate(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 function formatDuration(seconds: number): string {
@@ -33,6 +66,11 @@ function isActivityDone(activity: Activity, log: ActivityLog | undefined): boole
   if (log?.skipped) return true;
   if (activity.trackingType === 'sets-reps-weight') return (log?.sets?.length || 0) > 0;
   return !!log?.completed;
+}
+
+// Marked done or skipped: nothing more to log, so the next exercise opens (#67)
+function isClosed(log: ActivityLog | undefined): boolean {
+  return !!log?.completed || !!log?.skipped;
 }
 
 // Convert Activity[] to RoutineEntry[] for the builder
@@ -80,11 +118,15 @@ export function SessionView({
   program,
   activities,
   session,
-  lastPracticeNotes,
+  programActivities = [],
+  lastNextNote,
   previousSets,
+  previousNotes,
   onUpdateSession,
   onComplete,
   onUpdateActivities,
+  onAddActivity,
+  onRemoveActivity,
   onCancel,
 }: SessionViewProps) {
   const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
@@ -157,11 +199,12 @@ export function SessionView({
         if (activity) logs.push({ activityId, trackingType: activity.trackingType, notes: text });
       }
     }
-    return { ...base, activities: logs, notes: notes || undefined };
+    return { ...base, activities: logs, notes: notes || undefined, practiceNext: practiceNext || undefined };
   }
 
   function saveSession(updated: Session) {
-    const merged = withNotes(updated);
+    // lastActivityAt: an abandoned workout's time ends here (#66)
+    const merged = { ...withNotes(updated), lastActivityAt: new Date().toISOString() };
     sessionRef.current = merged;
     notesPending.current = false;
     onUpdateSession(merged);
@@ -175,11 +218,16 @@ export function SessionView({
     if (!notesPending.current) return;
     const timer = window.setTimeout(flushNotes, 600);
     return () => clearTimeout(timer);
-  }, [notes, activityNotes]);
+  }, [notes, activityNotes, practiceNext]);
 
   function editSessionNotes(text: string) {
     notesPending.current = true;
     setNotes(text);
+  }
+
+  function editPracticeNext(text: string) {
+    notesPending.current = true;
+    setPracticeNext(text);
   }
 
   function editActivityNotes(activityId: string, text: string) {
@@ -216,6 +264,7 @@ export function SessionView({
         : { duration: Math.floor(timerSeconds / 60) }),
       completed: true,
       ...(activityNote ? { notes: activityNote } : {}),
+      ...(currentLog?.added ? { added: true } : {}),
     };
 
     if (existingIndex >= 0) {
@@ -237,6 +286,101 @@ export function SessionView({
     }
   }
 
+  // Opens the next exercise after the current one that is neither done nor skipped
+  function goToNextOpen(logs: ActivityLog[]) {
+    const next = activities.findIndex((a, i) =>
+      i > currentActivityIndex && !isClosed(logs.find(l => l.activityId === a.id)));
+    if (next >= 0) goToActivity(next);
+  }
+
+  // Sets logged: marking the exercise done makes it read-only until Edit (#67)
+  function markSetsDone() {
+    const updatedLogs = session.activities.map(a =>
+      a.activityId === currentActivity.id ? { ...a, completed: true, skipped: undefined } : a);
+    saveSession({ ...session, activities: updatedLogs });
+    setDeletedSet(null);
+    goToNextOpen(updatedLogs);
+  }
+
+  // Edit a done exercise: back to in progress
+  function reopenActivity() {
+    saveSession({
+      ...session,
+      activities: session.activities.map(a =>
+        a.activityId === currentActivity.id ? { ...a, completed: undefined } : a),
+    });
+  }
+
+  // Add an exercise to this workout (#65): an existing one of the program, or a new one
+  const [showAddExercise, setShowAddExercise] = useState(false);
+  const [newExerciseName, setNewExerciseName] = useState('');
+  const [newExerciseType, setNewExerciseType] = useState<TrackingType>(() => defaultTrackingType(program));
+  const [addToPlan, setAddToPlan] = useState(false);
+  // Opens the added exercise once the parent passes it in
+  const [openOnArrival, setOpenOnArrival] = useState<string | null>(null);
+  const isGzclp = program.type === 'gzclp';
+  const addable = programActivities.filter(a => !activities.some(x => x.id === a.id));
+
+  useEffect(() => {
+    if (!openOnArrival) return;
+    const index = activities.findIndex(a => a.id === openOnArrival);
+    if (index >= 0) {
+      goToActivity(index);
+      setOpenOnArrival(null);
+    }
+  }, [activities, openOnArrival]);
+
+  useEffect(() => {
+    if (!showAddExercise) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowAddExercise(false);
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showAddExercise]);
+
+  function addExercise(activity: Activity, isNew: boolean) {
+    if (!onAddActivity) return;
+    if (!session.activities.some(a => a.activityId === activity.id)) {
+      saveSession({
+        ...session,
+        activities: [...session.activities, { activityId: activity.id, trackingType: activity.trackingType, added: true }],
+      });
+    }
+    onAddActivity(activity, isNew);
+    setOpenOnArrival(activity.id);
+    setShowAddExercise(false);
+    setNewExerciseName('');
+    setAddToPlan(false);
+  }
+
+  function addNewExercise() {
+    const name = newExerciseName.trim();
+    if (!name) return;
+    addExercise({
+      id: `activity_${Date.now()}`,
+      name,
+      programId: program.id,
+      trackingType: newExerciseType,
+      // GZCLP plans come from its day templates, so a new exercise never joins them
+      ...(addToPlan && !isGzclp ? {} : { adhoc: true }),
+    }, true);
+  }
+
+  // An added exercise with nothing logged can be taken back out
+  function removeAddedActivity() {
+    if (!onRemoveActivity || !currentActivity) return;
+    const id = currentActivity.id;
+    saveSession({ ...session, activities: session.activities.filter(a => a.activityId !== id) });
+    setActivityNotes(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    onRemoveActivity(id);
+    setCurrentActivityIndex(i => Math.max(0, Math.min(i, activities.length - 2)));
+  }
+
   function goToActivity(index: number) {
     setCurrentActivityIndex(index);
     setTimerSeconds(0);
@@ -253,16 +397,14 @@ export function SessionView({
       trackingType: currentActivity.trackingType,
       skipped: true,
       ...(activityNote ? { notes: activityNote } : {}),
+      ...(currentLog?.added ? { added: true } : {}),
     };
     const exists = session.activities.some(a => a.activityId === currentActivity.id);
     const updatedLogs = exists
       ? session.activities.map(a => (a.activityId === currentActivity.id ? log : a))
       : [...session.activities, log];
     saveSession({ ...session, activities: updatedLogs });
-
-    const next = activities.findIndex((a, i) =>
-      i > currentActivityIndex && !isActivityDone(a, updatedLogs.find(l => l.activityId === a.id)));
-    if (next >= 0) goToActivity(next);
+    goToNextOpen(updatedLogs);
   }
 
   function unskipActivity() {
@@ -342,12 +484,16 @@ export function SessionView({
 
   function handleFinish() {
     notesPending.current = false;
+    // A workout left open (e.g. continued the next day) ends at its last logged activity (#66)
+    const end = workoutEnd(session, new Date());
+    const base = withNotes(session);
     const completedSession: Session = {
-      ...withNotes(session),
+      ...base,
+      // Finishing closes every exercise that logged sets (#67)
+      activities: base.activities.map(a => ((a.sets?.length ?? 0) > 0 ? { ...a, completed: true } : a)),
       status: 'completed',
-      endTime: new Date().toISOString(),
-      duration: Math.floor((Date.now() - new Date(session.startTime!).getTime()) / 60000),
-      practiceNext: practiceNext || undefined,
+      endTime: end.toISOString(),
+      duration: durationMinutes(session, end),
     };
     onComplete(completedSession);
   }
@@ -380,6 +526,9 @@ export function SessionView({
     isActivityDone(activity, session.activities.find(a => a.activityId === activity.id)));
   const currentSkipped = !!currentLog?.skipped;
   const currentDone = currentActivity ? isActivityDone(currentActivity, currentLog) : false;
+  const currentMarkedDone = !!currentLog?.completed;
+  const canRemoveCurrent = !!currentLog?.added && !hasResult(currentLog) && !!onRemoveActivity;
+  const nextNoteLabel = isBallet ? 'Practice next week' : 'Note for next workout';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -421,19 +570,20 @@ export function SessionView({
 
       <div className="max-w-2xl mx-auto p-4">
         {/* Carry-forward notes from last session */}
-        {isBallet && lastPracticeNotes && !dismissedCarryForward && (
-          <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+        {lastNextNote && !dismissedCarryForward && (
+          <div className={`mb-4 border rounded-lg p-4 ${isBallet ? 'bg-purple-50 border-purple-200' : 'bg-amber-50 border-amber-200'}`}>
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-purple-800 uppercase tracking-wide mb-1">
-                  From last class
+                <h3 className={`text-sm font-semibold uppercase tracking-wide mb-1 ${isBallet ? 'text-purple-800' : 'text-amber-900'}`}>
+                  {isBallet ? 'From last class' : 'From last workout'}
+                  <span className="font-normal normal-case tracking-normal"> · {shortDate(lastNextNote.date)}</span>
                 </h3>
-                <p className="text-sm text-purple-700 whitespace-pre-wrap">{lastPracticeNotes}</p>
+                <p className={`text-sm whitespace-pre-wrap ${isBallet ? 'text-purple-700' : 'text-amber-900'}`}>{lastNextNote.notes}</p>
               </div>
               <button
                 onClick={() => setDismissedCarryForward(true)}
-                className="text-purple-400 hover:text-purple-600 text-lg leading-none p-1"
-                aria-label="Dismiss last class note"
+                className="text-gray-400 hover:text-gray-600 text-lg leading-none p-1"
+                aria-label={isBallet ? 'Dismiss last class note' : 'Dismiss last workout note'}
               >
                 &times;
               </button>
@@ -446,12 +596,15 @@ export function SessionView({
           {activities.map((activity, index) => {
             const log = session.activities.find(a => a.activityId === activity.id);
             const isSkipped = !!log?.skipped;
-            const isComplete = !isSkipped && isActivityDone(activity, log);
+            // Done = marked done (#67); sets logged but not marked = in progress
+            const isComplete = !isSkipped && !!log?.completed;
+            const isStarted = !isSkipped && !isComplete && hasResult(log);
 
             return (
               <button
                 key={activity.id}
                 onClick={() => goToActivity(index)}
+                title={isStarted ? 'In progress' : undefined}
                 className={`px-3 py-2 rounded-lg whitespace-nowrap transition-colors ${
                   index === currentActivityIndex
                     ? isBallet ? 'bg-purple-500 text-white' : 'bg-blue-500 text-white'
@@ -459,15 +612,27 @@ export function SessionView({
                       ? 'bg-green-100 text-green-700'
                       : isSkipped
                         ? 'bg-gray-100 text-gray-400 line-through'
-                        : 'bg-gray-100 text-gray-700'
+                        : isStarted
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-gray-100 text-gray-700'
                 }`}
               >
                 {activity.name}
                 {isComplete && ' ✓'}
+                {isStarted && <span aria-hidden="true"> •</span>}
                 {isSkipped && <span className="sr-only"> (skipped)</span>}
               </button>
             );
           })}
+          {onAddActivity && !isBallet && (
+            <button
+              onClick={() => setShowAddExercise(true)}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg whitespace-nowrap border border-dashed border-gray-300 text-gray-600 hover:bg-gray-100"
+            >
+              <ListPlus className="w-4 h-4" />
+              Add exercise
+            </button>
+          )}
         </div>
 
         {currentActivity && (
@@ -478,6 +643,16 @@ export function SessionView({
                 {currentActivity.name}
               </h2>
               <div className="flex items-center gap-1">
+              {canRemoveCurrent && (
+                <button
+                  onClick={removeAddedActivity}
+                  className="flex items-center gap-1 px-2 py-1.5 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Remove from this workout"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Remove</span>
+                </button>
+              )}
               {!currentDone && (
                 <button
                   onClick={skipActivity}
@@ -553,10 +728,7 @@ export function SessionView({
                 )}
 
                 {currentLog?.completed ? (
-                  <div className="flex items-center justify-center gap-2 py-3 text-green-600">
-                    <Check className="w-5 h-5" />
-                    <span className="font-medium">Completed</span>
-                  </div>
+                  <DoneBar label="Completed" onEdit={reopenActivity} />
                 ) : (
                   <button
                     onClick={markActivityComplete}
@@ -570,7 +742,13 @@ export function SessionView({
             )}
 
             {/* Duration-based tracking (timer) */}
-            {(currentActivity.trackingType === 'duration' || (currentActivity.trackingType === 'completion' && !isBallet)) && (
+            {(currentActivity.trackingType === 'duration' || (currentActivity.trackingType === 'completion' && !isBallet)) && currentMarkedDone && (
+              <DoneBar
+                label={`Done${currentLog?.duration ? ` · ${currentLog.duration} min` : ''}`}
+                onEdit={reopenActivity}
+              />
+            )}
+            {(currentActivity.trackingType === 'duration' || (currentActivity.trackingType === 'completion' && !isBallet)) && !currentMarkedDone && (
               <div className="space-y-6">
                 <div className="text-center">
                   <div className="text-5xl font-mono font-bold text-gray-900 mb-4">
@@ -632,14 +810,18 @@ export function SessionView({
                         <span className="flex-1 text-right font-medium">
                           {formatSetWeight(set.weight)} × {set.reps} reps
                         </span>
-                        <button
-                          onClick={() => deleteSet(set.id)}
-                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          aria-label={`Delete set ${set.setNumber}`}
-                          title="Delete set"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {currentMarkedDone ? (
+                          <span className="w-8" aria-hidden="true" />
+                        ) : (
+                          <button
+                            onClick={() => deleteSet(set.id)}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            aria-label={`Delete set ${set.setNumber}`}
+                            title="Delete set"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -659,7 +841,10 @@ export function SessionView({
                   </div>
                 )}
 
-                {/* Input new set */}
+                {currentMarkedDone && <DoneBar label="Done" onEdit={reopenActivity} />}
+
+                {/* Input new set; hidden once the exercise is marked done (#67) */}
+                {!currentMarkedDone && (
                 <div className="p-4 bg-gray-50 rounded-lg space-y-4">
                   <h3 className="text-sm font-semibold text-gray-500 uppercase">
                     Log Set {(currentLog?.sets?.length || 0) + 1}
@@ -738,12 +923,31 @@ export function SessionView({
                   >
                     Log Set ({formatSetWeight(currentWeight)} × {currentReps} reps)
                   </button>
+                  {(currentLog?.sets?.length ?? 0) > 0 && (
+                    <button
+                      onClick={markSetsDone}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                    >
+                      <Check className="w-5 h-5" />
+                      Mark exercise done
+                    </button>
+                  )}
                 </div>
+                )}
               </div>
             )}
 
-            {/* Notes for this activity in this session (#34) */}
+            {/* Notes for this activity in this session (#34); last time's notes above (#67) */}
             <div className="mt-6">
+              {previousNotes?.[currentActivity.id] && (
+                <div role="note" aria-label="Last time" className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <h3 className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">
+                    Last time
+                    <span className="font-normal normal-case tracking-normal"> · {shortDate(previousNotes[currentActivity.id].date)}</span>
+                  </h3>
+                  <p className="text-sm text-amber-900 whitespace-pre-wrap">{previousNotes[currentActivity.id].notes}</p>
+                </div>
+              )}
               <label
                 htmlFor="activity-notes"
                 className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1"
@@ -780,24 +984,108 @@ export function SessionView({
           />
         </div>
 
-        {/* Practice next week (ballet only) */}
-        {isBallet && (
-          <div className="mt-4 bg-white rounded-lg border border-purple-200 p-4">
-            <label className="block text-sm font-semibold text-purple-600 uppercase mb-2">
-              Practice next week
-            </label>
-            <textarea
-              value={practiceNext}
-              onChange={(e) => setPracticeNext(e.target.value)}
-              placeholder="What do you want to work on next time? e.g. pas de bourrée transitions, spotting for turns..."
-              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-              rows={3}
-            />
-          </div>
-        )}
+        {/* Note for the next session of this program; shown at its top (#67) */}
+        <div className={`mt-4 bg-white rounded-lg border p-4 ${isBallet ? 'border-purple-200' : 'border-gray-200'}`}>
+          <label htmlFor="next-note" className={`block text-sm font-semibold uppercase mb-2 ${isBallet ? 'text-purple-600' : 'text-gray-500'}`}>
+            {nextNoteLabel}
+          </label>
+          <textarea
+            id="next-note"
+            value={practiceNext}
+            onChange={(e) => editPracticeNext(e.target.value)}
+            placeholder={isBallet
+              ? 'What do you want to work on next time? e.g. pas de bourrée transitions, spotting for turns...'
+              : 'Anything to remember next time? e.g. squat +5 lbs, bench felt heavy'}
+            className={`w-full p-3 border border-gray-300 rounded-lg resize-y focus:ring-2 ${
+              isBallet ? 'focus:ring-purple-500 focus:border-purple-500' : 'focus:ring-blue-500 focus:border-blue-500'
+            }`}
+            rows={3}
+          />
+        </div>
       </div>
 
       {showGlossary && <BalletGlossary onClose={() => setShowGlossary(false)} />}
+
+      {/* Add exercise (#65) */}
+      {showAddExercise && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowAddExercise(false); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="add-exercise-title" className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 id="add-exercise-title" className="text-lg font-semibold">Add exercise</h3>
+              <button onClick={() => setShowAddExercise(false)} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Close add exercise">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {addable.length > 0 && (
+                <section aria-labelledby="add-existing-heading" className="p-4 border-b border-gray-100">
+                  <h4 id="add-existing-heading" className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    From this program
+                  </h4>
+                  <ul className="divide-y divide-gray-100">
+                    {addable.map(a => (
+                      <li key={a.id} className="flex items-center justify-between gap-2 py-2">
+                        <span className="min-w-0 truncate text-gray-900">{a.name}</span>
+                        <button
+                          onClick={() => addExercise(a, false)}
+                          aria-label={`Add ${a.name}`}
+                          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex-shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Add
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              <form
+                className="p-4 space-y-3"
+                onSubmit={(e) => { e.preventDefault(); addNewExercise(); }}
+              >
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New exercise</h4>
+                <div>
+                  <label htmlFor="new-exercise-name" className="block text-sm text-gray-600 mb-1">Name</label>
+                  <input
+                    id="new-exercise-name"
+                    value={newExerciseName}
+                    onChange={(e) => setNewExerciseName(e.target.value)}
+                    placeholder="e.g. Pull-ups"
+                    className="w-full p-2 border border-gray-300 rounded-lg"
+                    autoFocus={addable.length === 0}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="new-exercise-type" className="block text-sm text-gray-600 mb-1">Tracking</label>
+                  <select
+                    id="new-exercise-type"
+                    value={newExerciseType}
+                    onChange={(e) => setNewExerciseType(e.target.value as TrackingType)}
+                    className="w-full p-2 border border-gray-300 rounded-lg bg-white"
+                  >
+                    {Object.entries(TRACKING_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                {!isGzclp && (
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" checked={addToPlan} onChange={(e) => setAddToPlan(e.target.checked)} />
+                    Also add to every future workout of {program.name}
+                  </label>
+                )}
+                <button
+                  type="submit"
+                  disabled={!newExerciseName.trim()}
+                  className="w-full py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Add to this workout
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Routine Modal */}
       {isEditing && (
@@ -839,6 +1127,25 @@ export function SessionView({
           onClose={() => setReferenceTarget(null)}
         />
       )}
+    </div>
+  );
+}
+
+// A done exercise: read-only until Edit puts it back in progress (#67)
+function DoneBar({ label, onEdit }: { label: string; onEdit: () => void }) {
+  return (
+    <div role="status" className="flex items-center justify-between gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg">
+      <span className="flex items-center gap-2 font-medium">
+        <Check className="w-5 h-5" />
+        {label}
+      </span>
+      <button
+        onClick={onEdit}
+        className="flex items-center gap-1 px-2 py-1 text-sm font-semibold text-blue-600 hover:text-blue-800"
+      >
+        <Pencil className="w-4 h-4" />
+        Edit
+      </button>
     </div>
   );
 }

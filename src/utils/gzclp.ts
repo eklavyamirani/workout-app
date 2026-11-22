@@ -25,9 +25,11 @@ export function workoutDayFor(
   return nextWorkoutDay(program, days);
 }
 
-// The day's exercises in T1, T2, T3 order; all activities when the day is unknown.
+// The day's exercises in T1, T2, T3 order; all planned activities when the day is
+// unknown. Exercises added during a workout (adhoc, #65) are never planned.
 // The tier comes from the day's slot: a T1 lift can be another day's T2.
-export function activitiesForDay(activities: Activity[], day?: GZCLPWorkoutDay): Activity[] {
+export function activitiesForDay(all: Activity[], day?: GZCLPWorkoutDay): Activity[] {
+  const activities = all.filter(a => !a.adhoc);
   if (!day) return activities;
   const slots: [string, GZCLPTier][] = [
     [day.t1ExerciseId, 'T1'],

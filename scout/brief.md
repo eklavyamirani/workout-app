@@ -3,14 +3,14 @@
 The scout reads this before every run. It steers what to look for and how to rank.
 The owner edits it; triage decisions update it (see [decisions.md](decisions.md)).
 
-Status: **draft, not yet confirmed by the owner** (2026-11-20). Drafted from the README, `gzclp_tracker_spec.md`, `docs/multi-program-prd.md`, the decision records and the owner's own issues in this repository.
+Status: **draft, not yet confirmed by the owner** (2026-11-20; one owner answer added 2026-11-21, on class frequency). Drafted from the README, `gzclp_tracker_spec.md`, `docs/multi-program-prd.md`, the decision records and the owner's own issues in this repository.
 Every line is marked: **(owner: …)** quotes or closely follows the owner's own words, with where they said it; ***(inferred)*** is the scout's reading of the repository, to be confirmed or struck by the owner.
 
 ## Who it is for
 
 - **First: the owner**, who uses the app often (owner, 2026-11-20) to plan and track their own training: a GZCLP lifting program and ballet practice between classes (owner: #5, "my goals for the week practiced by the time I get to my next class"). ***(inferred: the mix of programs, from the README, #5 and the preview fixture)***
 - An intermediate strength trainer following GZCLP who wants data-driven insights without the overhead of complex tracking (owner: `gzclp_tracker_spec.md` §1.3, written for the original app). ***(inferred: that this still describes the owner today)***
-- An adult ballet student taking classes, whose class sequences change week to week (owner: #5). ***(inferred: level and class frequency unknown)***
+- An adult ballet student taking classes, whose class sequences change week to week (owner: #5). Class frequency: "Ballet is 2 classes repeated twice a week. Contemporary is 2 classes once a week." (owner, 2026-11-21, answering the brief's questions). Contemporary is a second dance style the owner takes (owner, 2026-11-21). ***(inferred: level unknown)***
 - **Second, maybe:** other people who sign in to the deployed app, or try it anonymously in the browser. ***(inferred: the app supports both, but nothing in the repository says it is meant for anyone but the owner)***
 - Not designed for: coaches managing clients, teams, or competitive athletes peaking for a meet. ***(inferred)***
 

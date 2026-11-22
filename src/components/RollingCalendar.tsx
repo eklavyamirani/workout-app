@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Play, SkipForward, Eye, ChevronRight, Plus, ChevronDown } from 'lucide-react';
+import { Play, SkipForward, Eye, ChevronRight, Plus, ChevronDown, Square } from 'lucide-react';
 import type { Program, Activity, Session, ScheduledSession, GZCLPWorkoutDay } from '../types';
 import { workoutDayFor, activitiesForDay } from '../utils/gzclp';
 import { localDateString, addDays } from '../utils/date';
 import { pastSessions } from '../utils/history';
+import { withLoggedActivities } from '../utils/session';
 import { isScheduledOn } from '../utils/schedule';
 import { WorkoutPreview } from './WorkoutPreview';
 
@@ -14,6 +15,8 @@ interface RollingCalendarProps {
   gzclpDays?: Record<string, GZCLPWorkoutDay[]>;
   onStartSession: (programId: string, date: string) => void;
   onSkipSession: (programId: string, date: string, reason?: string) => void;
+  // Ends an unfinished workout without finishing it (#66)
+  onEndSession: (programId: string, date: string) => void;
   onSplitSession: (programId: string, fromDate: string, toDate: string) => void;
 }
 
@@ -24,22 +27,6 @@ const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'F
 
 // Local calendar date; session keys use it (toISOString() would give the UTC date)
 const formatDate = localDateString;
-
-// Planned activities plus any the session logged that are not in the plan
-// (e.g. an exercise removed from the program since)
-function withLoggedActivities(planned: Activity[], session: Session | undefined, all: Activity[]): Activity[] {
-  if (!session) return planned;
-  const extra = session.activities
-    .filter(log => !planned.some(a => a.id === log.activityId))
-    .filter(log => (log.sets?.length ?? 0) > 0 || log.completed || log.notes)
-    .map(log => all.find(a => a.id === log.activityId) ?? {
-      id: log.activityId,
-      name: 'Removed exercise',
-      programId: session.programId,
-      trackingType: log.trackingType,
-    });
-  return [...planned, ...extra];
-}
 
 // A past session as shown in the past workouts list: its GZCLP day if it recorded
 // one, else only what it logged
@@ -142,6 +129,7 @@ export function RollingCalendar({
   gzclpDays = {},
   onStartSession,
   onSkipSession,
+  onEndSession,
 }: RollingCalendarProps) {
   const [preview, setPreview] = useState<{ scheduled: ScheduledSession; dateLabel: string } | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
@@ -192,9 +180,10 @@ export function RollingCalendar({
             <ul className="border-t border-gray-100 divide-y divide-gray-100">
               {startablePrograms.map(program => {
                 const todaySession = sessions[`${todayStr}:${program.id}`];
+                const doneToday = todaySession?.status === 'completed' || todaySession?.status === 'partial';
                 const label = todaySession?.status === 'in-progress'
                   ? 'Continue'
-                  : todaySession?.status === 'completed' ? 'Done today' : 'Start';
+                  : doneToday ? 'Done today' : 'Start';
                 return (
                   <li key={program.id} className="flex items-center justify-between gap-2 px-4 py-2">
                     <span className="min-w-0 truncate text-gray-900">{program.name}</span>
@@ -203,7 +192,7 @@ export function RollingCalendar({
                         setShowStartPicker(false);
                         onStartSession(program.id, todayStr);
                       }}
-                      disabled={todaySession?.status === 'completed'}
+                      disabled={doneToday}
                       aria-label={`${label} ${program.name} now`}
                       className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                     >
@@ -233,6 +222,7 @@ export function RollingCalendar({
           <div className="space-y-2">
             {daySessions.map((scheduled) => {
               const isCompleted = scheduled.session?.status === 'completed';
+              const isEnded = scheduled.session?.status === 'partial';
               const isSkipped = scheduled.session?.status === 'skipped';
               const isInProgress = scheduled.session?.status === 'in-progress';
 
@@ -240,7 +230,7 @@ export function RollingCalendar({
                 <div
                   key={`${scheduled.date}-${scheduled.programId}`}
                   className={`bg-white rounded-lg border p-4 ${
-                    isCompleted 
+                    isCompleted || isEnded
                       ? 'border-green-200 bg-green-50' 
                       : isSkipped 
                         ? 'border-gray-200 bg-gray-50 opacity-60' 
@@ -256,6 +246,11 @@ export function RollingCalendar({
                         {isCompleted && (
                           <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
                             Done
+                          </span>
+                        )}
+                        {isEnded && (
+                          <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                            Ended early
                           </span>
                         )}
                         {isSkipped && (
@@ -289,7 +284,7 @@ export function RollingCalendar({
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      {!isCompleted && !isSkipped && (
+                      {!isCompleted && !isEnded && !isSkipped && (
                         <>
                           <button
                             onClick={() => onStartSession(scheduled.programId, scheduled.date)}
@@ -342,6 +337,7 @@ export function RollingCalendar({
                     </div>
                     <div className="text-sm text-gray-500">
                       {scheduled.session!.status === 'in-progress' ? 'Not finished · ' : ''}
+                      {scheduled.session!.status === 'partial' ? 'Ended early · ' : ''}
                       {sessionSummary(scheduled.session!)}
                     </div>
                   </div>
@@ -349,14 +345,30 @@ export function RollingCalendar({
                 </button>
                 {/* An unfinished workout, e.g. one that ran past midnight, can still be continued */}
                 {scheduled.session!.status === 'in-progress' && (
-                  <button
-                    onClick={() => onStartSession(scheduled.programId, scheduled.date)}
-                    className="flex items-center gap-1 px-3 py-2 mr-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex-shrink-0"
-                    aria-label={`Continue ${scheduled.programName}, ${dateLabel}`}
-                  >
-                    <Play className="w-4 h-4" />
-                    <span>Continue</span>
-                  </button>
+                  <div className="flex items-center gap-2 mr-3 flex-shrink-0">
+                    {/* Abandoned workouts can be ended: time counts to the last logged set (#66) */}
+                    <button
+                      onClick={() => {
+                        if (confirm(`End ${scheduled.programName} (${dateLabel}) without finishing? What you logged is kept; its time ends at the last thing you logged.`)) {
+                          onEndSession(scheduled.programId, scheduled.date);
+                        }
+                      }}
+                      className="flex items-center gap-1 px-2 py-2 sm:px-3 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
+                      title="End without finishing"
+                      aria-label={`End ${scheduled.programName}, ${dateLabel}`}
+                    >
+                      <Square className="hidden sm:block w-4 h-4" />
+                      <span>End</span>
+                    </button>
+                    <button
+                      onClick={() => onStartSession(scheduled.programId, scheduled.date)}
+                      className="flex items-center gap-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                      aria-label={`Continue ${scheduled.programName}, ${dateLabel}`}
+                    >
+                      <Play className="w-4 h-4" />
+                      <span>Continue</span>
+                    </button>
+                  </div>
                 )}
               </li>
             ))}

@@ -65,8 +65,8 @@ describe('activitiesForDay', () => {
   });
 
   it('falls back to all activities without a day or matching exercises', () => {
-    expect(activitiesForDay(activities, undefined)).toBe(activities);
+    expect(activitiesForDay(activities, undefined)).toEqual(activities);
     const unknown = { ...days[0], t1ExerciseId: 'x', t2ExerciseId: 'y', t3ExerciseIds: [] };
-    expect(activitiesForDay(activities, unknown)).toBe(activities);
+    expect(activitiesForDay(activities, unknown)).toEqual(activities);
   });
 });

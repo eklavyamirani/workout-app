@@ -13,7 +13,7 @@ interface WorkoutPreviewProps {
 const STATUS_LABELS: Record<SessionStatus, string> = {
   completed: 'Completed',
   'in-progress': 'In progress',
-  partial: 'Partial',
+  partial: 'Ended early',
   skipped: 'Skipped',
 };
 

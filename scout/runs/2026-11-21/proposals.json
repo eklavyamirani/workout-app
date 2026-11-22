@@ -1,0 +1,65 @@
+{
+  "run": "2026-11-21",
+  "app": "workout",
+  "focus": null,
+  "brief": "scout/brief.md on main (2426ff4), still a draft not confirmed by the owner",
+  "decisions_read": "scout/decisions.md on main (2426ff4): empty log; no open 'Scout: record decisions' pull request",
+  "proposals": [
+    {
+      "id": "workout-2026-11-21-1",
+      "app": "workout",
+      "created_at": "2026-11-21",
+      "ttl": 30,
+      "rank": 1,
+      "title": "GZCLP works out today's weight and stage for you",
+      "problem": "When you open a GZCLP lift, the app fills in whatever you lifted last time. You have to remember yourself whether to add 5 lbs (last session hit every rep) or, after a missed set, drop to the next stage (T1 goes 5 sets of 3, then 6 of 2, then 10 of 1; T2 goes 3x10, 3x8, 3x6). That is exactly the planning the app was meant to take off your hands.",
+      "evidence": [
+        { "source_url": "https://github.com/eklavyamirani/workout-app/blob/2426ff4/docs/decisions/0016-prefill-from-exercise-history.md#L29", "quote_or_summary": "The app's own record turned GZCLP progression down as separate work: \"What GZCLP really wants\"; its Revisit-if line says prefill should then come from the next prescribed weight." },
+        { "source_url": "https://github.com/eklavyamirani/workout-app/blob/2426ff4/src/types/index.ts#L26-L39", "quote_or_summary": "The app today: each tier already stores weightIncrement and progressionThreshold, but nothing in src/ reads them (searched at 2426ff4)." },
+        { "source_url": "https://github.com/wger-project/wger/issues/1259", "quote_or_summary": "wger user asking for automatic progression: \"Currently, this has to be done manually by editing the workout program after each exercise.\"" },
+        { "source_url": "https://github.com/wger-project/wger/issues/848", "quote_or_summary": "8 thumbs-up; GZCL lifter wants to know \"what exercise, weight, and reps I have to do next\" at a glance; their mock-up drops 5x3 to 6x2 at the same weight after missed reps. Shipped by wger as flexible routines in March 2025." },
+        { "source_url": "https://github.com/astashov/liftosaur/issues/338", "quote_or_summary": "GZCLP lifter on Liftosaur: automatic increments break when the gym's cable stack only moves in 10 lb steps, so \"the weight does not increase the next day.\" Counter-evidence: auto-progression needs per-exercise increments." }
+      ],
+      "hypothesis": "If GZCLP prescribes each lift's next weight, sets and reps from the last session's result (add weight on success, move down a stage on a miss, reset after the last stage), the owner would start a GZCLP day and just follow the numbers, without looking back at last week.",
+      "acceptance_criteria": [
+        "T1: all 5x3 working sets hit -> next session adds the tier's weightIncrement; a missed rep -> same weight at 6x2, then 10x1; a miss at 10x1 -> back to 5x3 at a stated percentage (starting default 85%, labelled as such)",
+        "T2: 3x10 -> 3x8 -> 3x6 on misses, then back to 3x10 at a lower weight; T3: weight goes up when the AMRAP set reaches progressionThreshold (25)",
+        "The session view shows the prescription and why (for example 'Last time 5x3 at 135 done: +5 lbs'), and the weight and reps boxes prefill from it instead of the last set (record 0016 'Revisit if')",
+        "The lifter can override the weight for one session, and set the increment per lift (for example 2.5 lbs, or 10 for a cable stack)",
+        "Uses the target reps and AMRAP marks from PR #44 if it has merged; stage and next weight are derived from logged sessions or stored as optional fields, so old sessions stay valid",
+        "Unit tests for the progression rules in src/utils/__tests__; a Playwright spec (anonymous mode, e2e/fixtures) that logs a full and a missed T1 session and checks the next session's prescription; no server or sync format change unless a field is stored"
+      ],
+      "success_signal": "Within three weeks of GZCLP sessions the owner starts each lift on the prefilled prescription without checking past workouts, and at least one stage change happens on its own after a missed set.",
+      "effort_estimate": "M",
+      "strongest_reason_not_to_build": "The owner may run GZCLP loosely on purpose (adjusting weights by feel, with ballet in the same week), so hard rules could prescribe wrong numbers they then override every time; and the external demand here comes from other trackers' users, not from the owner.",
+      "revisits": null
+    },
+    {
+      "id": "workout-2026-11-21-2",
+      "app": "workout",
+      "created_at": "2026-11-21",
+      "ttl": 30,
+      "rank": 2,
+      "title": "Show which plates to load for the weight you're about to lift",
+      "problem": "Between sets of a barbell lift, the app shows a total like 185 lbs, and you work out in your head, or on the phone's calculator, which plates go on each side of a 45 lb bar. It is a small sum, but it comes up on every warm-up and weight change.",
+      "evidence": [
+        { "source_url": "https://github.com/LiamMorrow/LiftLog/issues/449", "quote_or_summary": "6 thumbs-up: \"I think a plate calculator similar to what Hevy has would be very useful.\" The request includes a starting weight for the bar or machine." },
+        { "source_url": "https://github.com/LiamMorrow/LiftLog/issues/555", "quote_or_summary": "LiftLog user's three requests start with a plate calculator: \"to save having to use phone calculator.\"" },
+        { "source_url": "https://github.com/LiamMorrow/LiftLog/issues/644", "quote_or_summary": "User asks for a configurable bar weight because \"its harder to remember what those weigh\"; the maintainer closed it as covered by the plate-calculator request." },
+        { "source_url": "https://github.com/eklavyamirani/workout-app/blob/2426ff4/src/utils/weight.ts#L17-L20", "quote_or_summary": "The app today: a logged set shows only its total weight in lbs; there is no bar weight or plate breakdown anywhere in src/." }
+      ],
+      "hypothesis": "If the log panel shows the plates per side for the current weight of a barbell lift, the owner would load the bar without doing the sum, on every warm-up and weight change.",
+      "acceptance_criteria": [
+        "For exercises marked as barbell (default for GZCLP T1 and T2 lifts; a toggle per exercise), the log panel shows plates per side under the weight box, for example '185 = bar 45 + 45, 25 per side'",
+        "Bar weight (default 45 lbs) and available plates (default 45, 35, 25, 10, 5, 2.5) are set once in settings and kept in synced settings",
+        "A weight that can't be made with the available plates says so and shows the nearest loadable weights either side",
+        "Updates as the weight changes (prefill, +/- steps, typing); bodyweight sets (weight 0) show nothing",
+        "Unit tests for the plate breakdown in src/utils/__tests__; a Playwright check in anonymous mode; settings sync is the only touch on the stored format"
+      ],
+      "success_signal": "Over two weeks the owner loads the bar from the on-screen breakdown and stops doing plate sums between sets.",
+      "effort_estimate": "S",
+      "strongest_reason_not_to_build": "Experienced lifters do plate math without thinking, the owner has never asked for it, and the evidence is from one other tracker's users; it saves seconds, not planning.",
+      "revisits": null
+    }
+  ]
+}

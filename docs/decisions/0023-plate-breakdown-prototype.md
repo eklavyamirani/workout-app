@@ -30,3 +30,30 @@ Settings are left for promotion, if the owner promotes it.
 The owner promotes #55: add bar and plate settings (synced), a per-exercise barbell toggle, and an e2e spec.
 
 ## Review
+- 2026-11-21, owner (on the round-1 demo, Pacific): "Iterate: settings for the available plates configured globally."
+
+## Round 2 (prototype, 2026-11-21)
+One app-wide setting for the bar and the plate sizes, used by the plate line on every barbell lift.
+
+- **Where it lives:** the key `settings:plates` (`{ bar, plates, updatedAt }`), through the same storage
+  adapter as programs and sessions (`src/storage/plateSettings.ts`). Signed in, it syncs like any other
+  key: the sync API stores any key, so no API, schema or PostgREST change. Anonymous, it stays in the
+  browser. Missing or malformed values fall back to the defaults (`normalizePlateSettings`).
+- **Where it's edited:** a "Plates" link next to the plate line in a workout, and a "Bar and plates" card on
+  the Programs page; both open the same dialog (bar weight, toggle chips for 55–1.25 lb, any other size).
+  Not in the header: it already overflows at 390 px (#48).
+- **Assumptions:** lbs only (the app's only unit); plate sizes only, with as many pairs of each as needed
+  (no counts: a home gym with two 45s isn't modelled yet); one bar for every barbell lift; the bar can be
+  0 to 200 lbs.
+- **Breakdown:** exact fewest-plates search instead of greedy. With a chosen set greedy can fail (25s and
+  10s: 30 a side is 10+10+10). Nearest loadable weights still step by two of the smallest plate.
+- **Tests:** `src/utils/__tests__/plates.test.ts` covers a custom bar and set, a set greedy would get
+  wrong, fractional plates and the setting's normalisation. The walkthrough reads the setting back from
+  the API.
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **Chosen: one synced key, edited from the workout and the Programs page** | Global as asked; no API change; reachable where it's needed | A second entry point to keep; no settings page to grow into |
+| A settings page in the header | One obvious home for settings | The header overflows on phones already (#48) |
+| Per-program or per-exercise bar | Covers a trap bar or a lighter bar for presses | Not what the owner asked; more UI |
+| Plate counts per size | Right for home gyms | More UI and a harder search for a rough round |

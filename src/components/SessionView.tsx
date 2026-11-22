@@ -8,6 +8,8 @@ import { ExerciseReferencePopover } from './ExerciseReferencePopover';
 import { getBaseExerciseId } from '../utils/exerciseId';
 import { sanitizeWeightInput, parseWeight, formatWeight, formatSetWeight } from '../utils/weight';
 import { plateBreakdown, formatPlates, isBarbell } from '../utils/plates';
+import { usePlateSettings } from './usePlateSettings';
+import { PlateSettingsDialog } from './PlateSettingsDialog';
 import { logger } from '../utils/logger';
 
 interface SessionViewProps {
@@ -95,6 +97,8 @@ export function SessionView({
   const [practiceNext, setPracticeNext] = useState(session.practiceNext || '');
   const [showGlossary, setShowGlossary] = useState(false);
   const [dismissedCarryForward, setDismissedCarryForward] = useState(false);
+  const plateSettings = usePlateSettings();
+  const [showPlateSettings, setShowPlateSettings] = useState(false);
 
   const isBallet = program.type === 'ballet';
   // Per-activity note drafts, keyed by activity id; saved into ActivityLog.notes (#34)
@@ -701,9 +705,18 @@ export function SessionView({
                       </div>
                       <p id="set-weight-hint" className="mt-1 text-xs text-gray-500">0 for bodyweight</p>
                       {isBarbell(currentActivity.equipment) && currentWeight > 0 && (
-                        <p data-testid="plate-breakdown" className="mt-1 text-sm font-medium text-gray-700">
-                          {formatPlates(plateBreakdown(currentWeight))}
-                        </p>
+                        <div className="mt-1 flex items-baseline justify-between gap-2">
+                          <p data-testid="plate-breakdown" className="text-sm font-medium text-gray-700">
+                            {formatPlates(plateBreakdown(currentWeight, plateSettings.bar, plateSettings.plates))}
+                          </p>
+                          <button type="button" onClick={() => setShowPlateSettings(true)}
+                            aria-label="Edit bar and plates" className="flex-shrink-0 text-xs text-blue-600 hover:text-blue-800">
+                            Plates
+                          </button>
+                        </div>
+                      )}
+                      {showPlateSettings && (
+                        <PlateSettingsDialog settings={plateSettings} onClose={() => setShowPlateSettings(false)} />
                       )}
                     </div>
 

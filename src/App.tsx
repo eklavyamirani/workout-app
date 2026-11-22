@@ -12,6 +12,7 @@ import { GZCLPSetup } from './components/GZCLPSetup';
 import { BalletSetup } from './components/BalletSetup';
 import { RollingCalendar } from './components/RollingCalendar';
 import { SessionView } from './components/SessionView';
+import { PlatesCard } from './components/PlatesCard';
 import type { Program, Activity, Session, GZCLPWorkoutDay, SetLog } from './types';
 import { gzclpDaysKey, workoutDayFor, activitiesForDay } from './utils/gzclp';
 import { lastSetsByActivity } from './utils/history';
@@ -400,6 +401,10 @@ export default function App() {
               />
             )}
           </>
+        )}
+
+        {view === 'programs' && (
+          <PlatesCard />
         )}
 
         {view === 'programs' && (

@@ -15,10 +15,12 @@ the details the contract leaves to it.
   when it is installed but not running (see [Linux and cloud sessions](#linux-and-cloud-sessions)). Nothing
   listens beyond `127.0.0.1`, except the provider's public keys on the Docker bridge on Linux.
 - **Node 20+**, the repository's `npm ci` (the kit uses the repository's own Vite) and `npm --prefix demo ci`
-  (Playwright 1.64.1 and its Chromium, static ffmpeg/ffprobe; `npx --prefix demo playwright install chromium`
-  if the browser isn't cached).
-- **Text to speech**: macOS `say` (voice Samantha), built in. On Linux the runner uses what violin's runner
-  finds (espeak-ng in a cloud session); see violin's `demo/README.md`.
+  (Playwright 1.64.1, static ffmpeg/ffprobe). The browser: `npx --prefix demo playwright install chromium` if
+  it isn't cached, or none at all where the machine already has a Playwright with its browsers (a cloud
+  session): the runner then uses that one (`demo/runner/browser.mjs`).
+- **Text to speech**: macOS `say` (voice Samantha), built in. On Linux, Kokoro: run
+  `demo/runner/voice/setup-kokoro.sh` once (Python venv and model files in `demo/.cache/voice/kokoro`); without
+  it the runner falls back to espeak-ng and says so. Details: violin's `demo/README.md`, "Text to speech".
 - No account, token, sign-in or network service other than the Docker image registries on the first start.
   Uploading the finished video to Downloads needs an upload token from the owner; without one the runner
   records and doesn't upload.
@@ -112,14 +114,15 @@ the page.
 ```bash
 node demo/test/template.test.mjs        # template timings, proposal schema, narration fallbacks (no browser)
 node demo/test/publish.test.mjs         # upload step against a local stand-in server (curl, no network)
+node demo/test/browser.test.mjs         # which Playwright the runner picks (launches Chromium, no network)
 node demo/test/same-structure.mjs demo/out/*/*.demo.json demo/out/*/*/*.demo.json   # after two or more demos
 node demo/test/runner-drift.mjs         # is the runner copy still violin's? (network, no token)
 ```
 
 ## The runner is a copy
 
-`demo/runner/`, `demo/CONTRACT.md` and the runner checks (`demo/test/template.test.mjs`,
-`demo/test/same-structure.mjs`, `demo/test/publish.test.mjs`) are violin's (eklavyamirani/violin-practice-system,
+`demo/runner/` (with `runner/voice/`), `demo/CONTRACT.md` and the runner checks (`demo/test/template.test.mjs`,
+`demo/test/same-structure.mjs`, `demo/test/publish.test.mjs`, `demo/test/browser.test.mjs`) are violin's (eklavyamirani/violin-practice-system,
 `demo/`), copied byte for byte at the commit in `demo/runner/UPSTREAM.json`, with the same pinned
 dependencies. Don't edit them here: change them in violin, copy them back, update the commit, and run
 `node demo/test/runner-drift.mjs` (it reports each file as same, changed upstream, or changed here, and any
@@ -141,6 +144,23 @@ load URL, fixed-date fixtures, machine needs and start times). Two details stay 
 
 ## Linux and cloud sessions
 
+**Can a demo be recorded in a Linux cloud session?** (`demo/CONTRACT.md` item 7.) Yes, with Docker: beyond
+the runner's own steps (violin's `demo/README.md`, "Recording in a cloud session": `npm --prefix demo ci`,
+`demo/runner/voice/setup-kokoro.sh`, then `node demo/runner/demo.mjs demo/proposals/<id>.json --no-upload`),
+the workout kit needs:
+
+- the repository's `npm ci` (the kit runs the repository's Vite);
+- Docker Engine: a running daemon, or root with `dockerd` installed (the kit starts it), which in a container
+  means a privileged one;
+- network for the first start: Docker Hub (`registry-1.docker.io`, `auth.docker.io`) for Postgres,
+  `mcr.microsoft.com` and its data hosts for the .NET images, and `api.nuget.org` for the API build (about
+  12 minutes on a Mac; later starts reuse the image);
+- a proxy with its own CA is handled (table below); if it isn't found on its own, `DEMO_CA_BUNDLE=<ca.pem>`.
+
+Verified so far: the kit, in a privileged Linux container with and without a proxy (2026-11-21, decision
+0024). A whole recording on Linux with this runner hasn't been run yet; the first cloud recording
+(2026-11-21) predates the kit and runner changes and needed hand workarounds.
+
 A cloud session's container (Linux, root, a proxy with its own CA, no Docker daemon running) needs these, and
 the kit does them itself; a Mac is unchanged.
 
@@ -154,9 +174,7 @@ the kit does them itself; a Mac is unchanged.
 What the repository can't fix, and stays with the machine or the runner:
 
 - **Docker itself**: installing Docker Engine, and `dockerd` needing root or a privileged container.
-- **The browser**: the runner's Playwright (1.64.1, `demo/package.json`) needs its own Chromium and ffmpeg
-  builds (`npx --prefix demo playwright install chromium`); a machine with another Playwright's browsers
-  only needs the runner to fall back to them. That is runner code, maintained in violin (`demo/runner/`).
-- **The voice**: the runner picks it (violin).
+- **The browser and the voice** are the runner's (violin's): it falls back to the machine's installed
+  Playwright, and uses Kokoro once `setup-kokoro.sh` has run, else espeak-ng.
 - **Uploading**: no upload token in a cloud session, by design; the video is sent in the session.
 

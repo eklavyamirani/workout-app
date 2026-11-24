@@ -52,3 +52,9 @@ bridge is disabled on a machine (`docker network inspect bridge` fails).
   installed Playwright, `ffmpeg-static` is optional, Kokoro is the Linux voice. The copy is re-synced to
   `4790d8f`; the drift check now also covers `runner/voice/` and optional dependencies. `demo/README.md`
   answers the contract's new item 7 (can a demo be recorded in a Linux cloud session: yes, with Docker).
+- 2026-11-23: a whole recording in a Linux container (Playwright 1.57.0 installed, Kokoro) wrote the
+  complete 60-second video, then node never exited: the runner's 64×64 video check closed before its first
+  frame, which left Playwright 1.57's ffmpeg waiting for input. Nothing in the workout kit was involved.
+  violin fixed it (#45, `a85b3de`: the check waits for a first frame, `demo.mjs` exits explicitly once its
+  result is printed); the copy is re-synced to `a85b3de`. The kit closes its stack inside the recording step,
+  so the explicit exit skips no teardown.

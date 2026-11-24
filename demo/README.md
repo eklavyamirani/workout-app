@@ -114,7 +114,7 @@ the page.
 ```bash
 node demo/test/template.test.mjs        # template timings, proposal schema, narration fallbacks (no browser)
 node demo/test/publish.test.mjs         # upload step against a local stand-in server (curl, no network)
-node demo/test/browser.test.mjs         # which Playwright the runner picks (launches Chromium, no network)
+node demo/test/browser.test.mjs         # which Playwright the runner picks, and that node exits after its video check (launches Chromium, no network)
 node demo/test/same-structure.mjs demo/out/*/*.demo.json demo/out/*/*/*.demo.json   # after two or more demos
 node demo/test/runner-drift.mjs         # is the runner copy still violin's? (network, no token)
 ```
@@ -158,8 +158,11 @@ the workout kit needs:
 - a proxy with its own CA is handled (table below); if it isn't found on its own, `DEMO_CA_BUNDLE=<ca.pem>`.
 
 Verified so far: the kit, in a privileged Linux container with and without a proxy (2026-11-21, decision
-0024). A whole recording on Linux with this runner hasn't been run yet; the first cloud recording
-(2026-11-21) predates the kit and runner changes and needed hand workarounds.
+0024). A whole recording on Linux (2026-11-23: `node:24-bookworm` beside a `docker:29-dind` daemon,
+Playwright 1.57.0 installed, Kokoro) wrote the complete 60-second video; the runner then never exited,
+because its video check left Playwright 1.57's encoder waiting. violin fixed that in `a85b3de`, copied here;
+the fixed runner hasn't been through a whole Linux recording yet. The first cloud recording (2026-11-21)
+predates the kit and runner changes and needed hand workarounds.
 
 A cloud session's container (Linux, root, a proxy with its own CA, no Docker daemon running) needs these, and
 the kit does them itself; a Mac is unchanged.
